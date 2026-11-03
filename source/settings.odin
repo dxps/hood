@@ -4,20 +4,30 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "core:sys/posix"
 import ns "core:sys/darwin/Foundation"
+import "core:sys/posix"
 import rl "vendor:raylib"
 
 MIN_ICON_SIZE :: 24
 MAX_ICON_SIZE :: 48
+MAX_CORNER_RADIUS :: 24
+SETTINGS_BUTTON_RADIUS :: 9.0
+
+
+DEFAULT_SETTINGS :: Settings {
+	icon_size      = 32,
+	background_rgb = 0x1D1D20,
+}
 
 Settings :: struct {
-	right_edge: bool,
-	icon_size: i32,
+	right_edge:     bool,
+	icon_size:      i32,
+	corner_radius:  i32,
+	background_rgb: u32,
 }
 
 load_settings :: proc(path: string) -> Settings {
-	settings := Settings{icon_size = 32}
+	settings := DEFAULT_SETTINGS
 	data, err := os.read_entire_file(path, context.allocator)
 	if err != nil {
 		return settings
@@ -29,18 +39,43 @@ load_settings :: proc(path: string) -> Settings {
 		if separator == "" {
 			continue
 		}
-		value, _, _ = strings.partition(value, "#")
 		value = strings.trim_space(value)
+		if len(value) > 0 && (value[0] == '"' || value[0] == '\'') {
+			_, closing, tail := strings.partition(value[1:], value[:1])
+			if closing != "" {
+				value = value[:len(value) - len(tail)]
+			}
+		} else {
+			value, _, _ = strings.partition(value, "#")
+			value = strings.trim_space(value)
+		}
 		switch strings.trim_space(key) {
 		case "edge":
 			switch value {
-			case `"left"`, "'left'": settings.right_edge = false
-			case `"right"`, "'right'": settings.right_edge = true
+			case `"left"`, "'left'":
+				settings.right_edge = false
+			case `"right"`, "'right'":
+				settings.right_edge = true
 			}
 		case "icon_size":
 			size, valid := strconv.parse_int(value)
 			if valid && size >= MIN_ICON_SIZE && size <= MAX_ICON_SIZE {
 				settings.icon_size = i32(size)
+			}
+		case "corner_radius":
+			radius, valid := strconv.parse_int(value)
+			if valid && radius >= 0 && radius <= MAX_CORNER_RADIUS {
+				settings.corner_radius = i32(radius)
+			}
+		case "background_color":
+			if len(value) == 9 &&
+			   value[1] == '#' &&
+			   (value[0] == '"' || value[0] == '\'') &&
+			   value[8] == value[0] {
+				rgb, valid := strconv.parse_uint(value[2:8], 16)
+				if valid && rgb <= 0xFFFFFF {
+					settings.background_rgb = u32(rgb)
+				}
 			}
 		}
 	}
@@ -56,7 +91,13 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	temp_path := strings.clone(os.name(file), context.temp_allocator)
 	defer os.remove(temp_path)
 	edge := settings.right_edge ? "right" : "left"
-	text := fmt.tprintf("edge = \"%s\"\nicon_size = %d\n", edge, settings.icon_size)
+	text := fmt.tprintf(
+		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\n",
+		edge,
+		settings.icon_size,
+		settings.corner_radius,
+		settings.background_rgb,
+	)
 	_, err := os.write(file, transmute([]byte)text)
 	close_err := os.close(file)
 	if err != nil {
@@ -68,41 +109,114 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	return os.rename(temp_path, path)
 }
 
-ui_button :: proc(rect: rl.Rectangle, text: cstring, selected := false, font_size: i32 = 16) -> bool {
+Settings_Theme :: struct {
+	background, text, button, highlight, error: rl.Color,
+}
+
+LIGHT_SETTINGS_THEME :: Settings_Theme {
+	{246, 246, 246, 255},
+	{28, 28, 28, 255},
+	{231, 231, 231, 255},
+	{208, 221, 238, 255},
+	{153, 30, 45, 255},
+}
+
+DARK_SETTINGS_THEME :: Settings_Theme {
+	{37, 37, 37, 255},
+	{242, 242, 242, 255},
+	{54, 54, 54, 255},
+	{76, 83, 96, 255},
+	{255, 158, 170, 255},
+}
+
+settings_theme :: proc(window: ^ns.Object) -> Settings_Theme {
+	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
+	defer notify(pool, "drain")
+
+	string_class := native_class("NSString")
+	aqua := send(
+		^ns.Object,
+		string_class,
+		"stringWithUTF8String:",
+		cstring("NSAppearanceNameAqua"),
+	)
+	dark := send(
+		^ns.Object,
+		string_class,
+		"stringWithUTF8String:",
+		cstring("NSAppearanceNameDarkAqua"),
+	)
+	names := send(^ns.Object, native_class("NSArray"), "arrayWithObject:", aqua)
+	names = send(^ns.Object, names, "arrayByAddingObject:", dark)
+	appearance := send(^ns.Object, window, "effectiveAppearance")
+	match := send(^ns.Object, appearance, "bestMatchFromAppearancesWithNames:", names)
+	return(
+		DARK_SETTINGS_THEME if send(ns.BOOL, match, "isEqualToString:", dark) else LIGHT_SETTINGS_THEME \
+	)
+}
+
+ui_button :: proc(
+	theme: Settings_Theme,
+	rect: rl.Rectangle,
+	text: cstring,
+	selected := false,
+	font_size: i32 = 16,
+) -> bool {
 	hover := rl.CheckCollisionPointRec(rl.GetMousePosition(), rect)
-	color := rl.Color{48, 48, 54, 255}
+	color := theme.button
 	if hover || selected {
-		color = {74, 79, 96, 255}
+		color = theme.highlight
 	}
-	rl.DrawRectangleRounded(rect, 0.18, 8, color)
+	roundness := min(1, 2 * SETTINGS_BUTTON_RADIUS / min(rect.width, rect.height))
+	rl.DrawRectangleRounded(rect, roundness, 12, color)
 	x := i32(rect.x + (rect.width - text_width(text, font_size)) / 2)
-	draw_text(text, x, i32(rect.y + (rect.height - f32(font_size)) / 2), font_size, rl.RAYWHITE)
+	draw_text(text, x, i32(rect.y + (rect.height - f32(font_size)) / 2), font_size, theme.text)
 	return hover && rl.IsMouseButtonReleased(.LEFT)
 }
 
-settings_view :: proc(draft: ^Settings, failed: bool) {
+settings_view :: proc(
+	draft: ^Settings,
+	failed: bool,
+	theme: Settings_Theme,
+) -> (
+	pick_color, done: bool,
+) {
 	rl.BeginDrawing()
 	defer rl.EndDrawing()
-	rl.ClearBackground({29, 29, 32, 255})
-	draw_text("Hood Settings", 20, 20, 24, rl.RAYWHITE)
-	draw_text("Shelf edge", 20, 64, 16, rl.RAYWHITE)
-	if ui_button({150, 56, 78, 32}, "Left", !draft.right_edge) {
+	rl.ClearBackground(theme.background)
+	draw_text("Appearance", 20, 20, 20, theme.text)
+	draw_text("Position", 20, 64, 16, theme.text)
+	if ui_button(theme, {150, 56, 78, 32}, "Left", !draft.right_edge) {
 		draft.right_edge = false
 	}
-	if ui_button({236, 56, 78, 32}, "Right", draft.right_edge) {
+	if ui_button(theme, {236, 56, 78, 32}, "Right", draft.right_edge) {
 		draft.right_edge = true
 	}
-	draw_text("Icon size", 20, 114, 16, rl.RAYWHITE)
-	if ui_button({150, 106, 40, 32}, "-") {
+	draw_text("Icon size", 20, 114, 16, theme.text)
+	if ui_button(theme, {150, 106, 40, 32}, "-") {
 		draft.icon_size = max(MIN_ICON_SIZE, draft.icon_size - 4)
 	}
-	draw_text(fmt.ctprintf("%d px", draft.icon_size), 204, 114, 16, rl.RAYWHITE)
-	if ui_button({274, 106, 40, 32}, "+") {
+	draw_text(fmt.ctprintf("%d px", draft.icon_size), 204, 114, 16, theme.text)
+	if ui_button(theme, {274, 106, 40, 32}, "+") {
 		draft.icon_size = min(MAX_ICON_SIZE, draft.icon_size + 4)
 	}
-	if failed {
-		draw_text("Could not save hood.toml", 20, 154, 16, rl.PINK)
+	draw_text("Corner radius", 20, 164, 16, theme.text)
+	if ui_button(theme, {150, 156, 40, 32}, "-") {
+		draft.corner_radius = max(0, draft.corner_radius - 2)
 	}
+	draw_text(fmt.ctprintf("%d px", draft.corner_radius), 204, 164, 16, theme.text)
+	if ui_button(theme, {274, 156, 40, 32}, "+") {
+		draft.corner_radius = min(MAX_CORNER_RADIUS, draft.corner_radius + 2)
+	}
+
+	draw_text("Background color", 20, 211, 16, theme.text)
+	draw_text(fmt.ctprintf("#%06X", draft.background_rgb), 150, 211, 16, theme.text)
+	pick_color = ui_button(theme, {240, 204, 74, 30}, "Choose", font_size = 13)
+	if failed {
+		draw_text("Could not save hood.toml", 20, 251, 16, theme.error)
+	}
+	done = ui_button(theme, {240, 275, 74, 32}, "OK")
+	return
 }
 
 // Raylib owns one window per process. The shelf launches this mode as a child.
@@ -111,7 +225,7 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	defer notify(pool, "drain")
 
 	rl.SetConfigFlags({.WINDOW_HIGHDPI, .VSYNC_HINT, .WINDOW_TOPMOST})
-	rl.InitWindow(334, 190, "Hood Settings")
+	rl.InitWindow(334, 327, "Settings")
 	defer rl.CloseWindow()
 	load_ui_font()
 	defer rl.UnloadFont(work_sans)
@@ -120,10 +234,10 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	application := send(^ns.Object, native_class("NSApplication"), "sharedApplication")
 	send(ns.BOOL, application, "setActivationPolicy:", int(1))
 	// Give Raylib a frame to finish processing the window's initial events.
-	rl.BeginDrawing()
-	rl.ClearBackground({29, 29, 32, 255})
-	rl.EndDrawing()
 	window := cocoa_window()
+	rl.BeginDrawing()
+	rl.ClearBackground(settings_theme(window).background)
+	rl.EndDrawing()
 	notify(application, "activateIgnoringOtherApps:", ns.BOOL(true))
 	notify(window, "makeKeyAndOrderFront:", (^ns.Object)(nil))
 	notify(window, "orderFrontRegardless")
@@ -131,9 +245,19 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 
 	draft := initial
 	failed := false
+	color_panel: ^ns.Object
+	picker_active := false
+	picker_rgb := draft.background_rgb
 	for !rl.WindowShouldClose() && posix.getppid() != 1 {
 		previous := draft
-		settings_view(&draft, failed)
+		if picker_active {
+			if rgb, ok := color_panel_rgb(color_panel); ok && rgb != picker_rgb {
+				picker_rgb = rgb
+				draft.background_rgb = rgb
+			}
+			picker_active = send(ns.BOOL, color_panel, "isVisible")
+		}
+		pick_color, done := settings_view(&draft, failed, settings_theme(window))
 		if draft != previous {
 			failed = true
 			if config_path != "" {
@@ -146,6 +270,23 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 			if failed {
 				draft = previous
 			}
+		}
+		if done {
+			break
+		}
+		if pick_color {
+			color_panel = send(^ns.Object, native_class("NSColorPanel"), "sharedColorPanel")
+			notify(color_panel, "setShowsAlpha:", ns.BOOL(false))
+			notify(color_panel, "setContinuous:", ns.BOOL(true))
+			notify(color_panel, "setLevel:", send(int, window, "level") + 1)
+		}
+		if pick_color || (picker_active && draft.background_rgb != picker_rgb) {
+			picker_rgb = draft.background_rgb
+			set_color_panel_rgb(color_panel, picker_rgb)
+		}
+		if pick_color {
+			notify(color_panel, "makeKeyAndOrderFront:", (^ns.Object)(nil))
+			picker_active = true
 		}
 		free_all(context.temp_allocator)
 	}

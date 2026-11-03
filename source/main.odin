@@ -3,20 +3,12 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import cg "core:sys/darwin/CoreGraphics"
 import ns "core:sys/darwin/Foundation"
 import rl "vendor:raylib"
-
-foreign import core_graphics "system:CoreGraphics.framework"
-
-foreign core_graphics {
-	CGEventSourceButtonState :: proc "c" (state: cg.EventSourceStateID, button: u32) -> bool ---
-}
 
 SHELF_WIDTH :: 68
 ROW_HEIGHT :: 52
 PADDING :: 6
-MENU_HEIGHT :: 44
 
 App :: struct {
 	pid: i32,
@@ -133,7 +125,7 @@ position_shelf :: proc(window: ^ns.Object, rows: int, settings: Settings) {
 main :: proc() {
 	home, home_err := os.user_home_dir(context.allocator)
 	config_dir, config_path: string
-	settings := Settings{icon_size = 32}
+	settings := DEFAULT_SETTINGS
 	if home_err == nil {
 		config_dir = fmt.aprintf("%s/.config/hood", home)
 		config_path = fmt.aprintf("%s/hood.toml", config_dir)
@@ -149,7 +141,7 @@ main :: proc() {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
-	rl.SetConfigFlags({.WINDOW_UNDECORATED, .WINDOW_TOPMOST, .WINDOW_HIGHDPI, .VSYNC_HINT})
+	rl.SetConfigFlags({.WINDOW_UNDECORATED, .WINDOW_TRANSPARENT, .WINDOW_TOPMOST, .WINDOW_HIGHDPI, .VSYNC_HINT})
 	rl.InitWindow(SHELF_WIDTH, ROW_HEIGHT + 2 * PADDING, "Hood")
 	defer rl.CloseWindow()
 	load_ui_font()
@@ -174,10 +166,6 @@ main :: proc() {
 	active_pid: i32
 	next_refresh: f64
 	scroll: f32
-	menu_open: bool
-	menu_y: f32
-	previous_buttons: bit_set[0..=2]
-	menu_click_pending: bool
 	settings_process: os.Process
 	defer {
 		if settings_process.pid != 0 {
@@ -212,38 +200,27 @@ main :: proc() {
 		max_scroll := f32(max(0, len(apps) * ROW_HEIGHT + 2 * PADDING - int(height)))
 		scroll = clamp(scroll - rl.GetMouseWheelMove() * ROW_HEIGHT, 0, max_scroll)
 		mouse := rl.GetMousePosition()
-		buttons: bit_set[0..=2]
-		for button in 0..=2 {
-			if CGEventSourceButtonState(.CombinedSessionState, u32(button)) {
-				buttons += {button}
-			}
-		}
-		pointer := send(ns.Point, window, "mouseLocationOutsideOfEventStream")
-		inside := pointer.x >= 0 && pointer.x < SHELF_WIDTH && pointer.y >= 0 && pointer.y < ns.Float(height)
-		outside_click := !inside && buttons - previous_buttons != {}
-		previous_buttons = buttons
-		if outside_click || rl.IsMouseButtonPressed(.MIDDLE) {
-			menu_open = false
-		}
-		if rl.IsMouseButtonPressed(.RIGHT) {
-			menu_open = !menu_open
-			menu_y = clamp(mouse.y, 0, f32(max(0, height - MENU_HEIGHT - 2)))
+		open_settings := false
+		context_click := rl.IsMouseButtonReleased(.RIGHT)
+		if context_click {
+			hide_tooltip(&tooltip)
+			open_settings = show_context_menu(window)
 		}
 		if rl.IsKeyPressed(.ESCAPE) {
-			if !menu_open {
-				break
-			}
-			menu_open = false
+			break
 		}
 
 		rl.BeginDrawing()
-		rl.ClearBackground({29, 29, 32, 255})
+		rl.ClearBackground(rl.BLANK)
+		shelf_rect := rl.Rectangle{0, 0, SHELF_WIDTH, f32(height)}
+		roundness := min(1, 2 * f32(settings.corner_radius) / min(shelf_rect.width, shelf_rect.height))
+		rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
 		hovered: App
 		tooltip_center_y: f32
 		for app, index in apps {
 			y := f32(PADDING + index * ROW_HEIGHT) - scroll
 			row := rl.Rectangle{8, y, SHELF_WIDTH - 16, ROW_HEIGHT - 4}
-			hover := !menu_open && rl.IsCursorOnScreen() && rl.CheckCollisionPointRec(mouse, row)
+			hover := !context_click && rl.IsCursorOnScreen() && rl.CheckCollisionPointRec(mouse, row)
 			if hover {
 				hovered = app
 				tooltip_center_y = row.y + row.height / 2
@@ -258,7 +235,7 @@ main :: proc() {
 			} else {
 				rl.DrawCircle(34, i32(y) + 24, 10, rl.GRAY)
 			}
-			if hover && !menu_click_pending && rl.IsMouseButtonReleased(.LEFT) {
+			if hover && rl.IsMouseButtonReleased(.LEFT) {
 				target := send(^ns.Object, native_class("NSRunningApplication"), "runningApplicationWithProcessIdentifier:", app.pid)
 				send(ns.BOOL, target, "activateWithOptions:", uint(0))
 			}
@@ -266,21 +243,6 @@ main :: proc() {
 		if hovered.pid != hovered_pid {
 			hovered_pid = hovered.pid
 			hover_started = rl.GetTime()
-		}
-		open_settings := false
-		if menu_open {
-			menu := rl.Rectangle{2, menu_y, SHELF_WIDTH - 4, MENU_HEIGHT}
-			rl.DrawRectangleRounded(menu, 0.30, 8, {38, 38, 43, 255})
-			item := rl.Rectangle{menu.x + 4, menu.y + 8, menu.width - 8, menu.height - 16}
-			ui_button(item, "Settings", font_size = 14)
-			if rl.IsMouseButtonPressed(.LEFT) {
-				open_settings = rl.CheckCollisionPointRec(mouse, menu)
-				menu_click_pending = true
-				menu_open = false
-			}
-		}
-		if rl.IsMouseButtonReleased(.LEFT) {
-			menu_click_pending = false
 		}
 		rl.EndDrawing()
 		if hovered.name != "" && rl.GetTime() - hover_started >= 0.45 && !open_settings {
