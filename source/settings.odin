@@ -8,6 +8,8 @@ import ns "core:sys/darwin/Foundation"
 import "core:sys/posix"
 import rl "vendor:raylib"
 
+SETTINGS_WIDTH :: 400
+
 MIN_ICON_SIZE :: 24
 MAX_ICON_SIZE :: 48
 MAX_CORNER_RADIUS :: 24
@@ -20,6 +22,7 @@ DEFAULT_SETTINGS :: Settings {
 	icon_gap = 20,
 	horizontal_margin = 18,
 	vertical_margin = 14,
+	animation_tenths = 3,
 }
 
 Shelf_Edge :: enum { Left, Right, Bottom, Top }
@@ -32,6 +35,8 @@ Settings :: struct {
 	corner_radius:  i32,
 	background_rgb: u32,
 	icon_gap, horizontal_margin, vertical_margin: i32,
+	auto_hide: bool,
+	animation_tenths: i32,
 }
 
 load_settings :: proc(path: string) -> Settings {
@@ -59,6 +64,15 @@ load_settings :: proc(path: string) -> Settings {
 		}
 		key = strings.trim_space(key)
 		switch key {
+		case "auto_hide":
+			if value == "true" || value == "false" {
+				settings.auto_hide = value == "true"
+			}
+		case "animation_tenths":
+			duration, valid := strconv.parse_int(value)
+			if valid && duration >= 0 && duration <= 10 {
+				settings.animation_tenths = i32(duration)
+			}
 		case "edge":
 			for edge in Shelf_Edge {
 				edge_key := EDGE_KEYS[edge]
@@ -111,7 +125,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\n",
+		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\n",
 		edge,
 		settings.icon_size,
 		settings.corner_radius,
@@ -119,6 +133,8 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 		settings.icon_gap,
 		settings.horizontal_margin,
 		settings.vertical_margin,
+		settings.auto_hide,
+		settings.animation_tenths,
 	)
 	_, err := os.write(file, transmute([]byte)text)
 	close_err := os.close(file)
@@ -137,7 +153,7 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	defer notify(pool, "drain")
 
 	rl.SetConfigFlags({.WINDOW_HIGHDPI, .VSYNC_HINT, .WINDOW_TOPMOST})
-	rl.InitWindow(334, 494, "Settings")
+	rl.InitWindow(SETTINGS_WIDTH, settings_height(initial), "Settings")
 	defer rl.CloseWindow()
 	load_ui_font()
 	defer rl.UnloadFont(work_sans)
@@ -159,7 +175,7 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	defer close_live_ui(&ui)
 	draft := initial
 	failed := false
-	dropdown := false
+	dropdown := Settings_Dropdown.None
 	color_panel: ^ns.Object
 	picker_active := false
 	picker_rgb := draft.background_rgb
@@ -185,6 +201,9 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 			if failed {
 				draft = previous
 			}
+		}
+		if draft.auto_hide != previous.auto_hide {
+			rl.SetWindowSize(SETTINGS_WIDTH, settings_height(draft))
 		}
 		if done {
 			break

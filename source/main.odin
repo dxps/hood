@@ -108,7 +108,7 @@ free_apps :: proc(apps: [dynamic]App) {
 	delete(apps)
 }
 
-position_shelf :: proc(window: ^ns.Object, rows: int, settings: Settings) {
+shelf_frames :: proc(window: ^ns.Object, rows: int, settings: Settings) -> (resting, display: ns.Rect) {
 	screen := send(^ns.Screen, window, "screen")
 	if screen == nil {
 		screen = send(^ns.Screen, native_class("NSScreen"), "mainScreen")
@@ -132,10 +132,9 @@ position_shelf :: proc(window: ^ns.Object, rows: int, settings: Settings) {
 	case .Bottom: y = available.origin.y + 8
 	case .Top: y = available.origin.y + available.size.height - height - 8
 	}
-	frame := ns.Rect{origin = {x, y}, size = {width, height}}
-	if frame != send_rect(window, "frame") {
-		notify(window, "setFrame:display:", frame, ns.BOOL(true))
-	}
+	resting = ns.Rect{origin = {x, y}, size = {width, height}}
+	display = send_rect((^ns.Object)(screen), "frame")
+	return
 }
 
 when !#config(HOOD_UI_MODULE, false) {
@@ -188,6 +187,7 @@ run_shelf :: proc() {
 	}
 	active_pid: i32
 	next_refresh: f64
+	visibility := Shelf_Visibility{progress = 1}
 	scroll: f32
 	settings_process: os.Process
 	defer {
@@ -217,17 +217,18 @@ run_shelf :: proc() {
 					settings_process = {}
 				}
 			}
-			position_shelf(window, len(apps), settings)
+			visibility.resting, visibility.display = shelf_frames(window, len(apps), settings)
 			next_refresh = rl.GetTime() + 0.25
 		}
 
+		interactive := update_shelf_visibility(window, &visibility, settings)
 		width, height := rl.GetScreenWidth(), rl.GetScreenHeight()
 		layout := shelf_layout(settings, len(apps))
 		viewport := layout.horizontal ? width : height
 		max_scroll := f32(max(0, layout.length - viewport))
 		scroll = clamp(scroll - rl.GetMouseWheelMove() * f32(layout.step), 0, max_scroll)
 		open_settings := false
-		context_click := rl.IsMouseButtonReleased(.RIGHT)
+		context_click := interactive && rl.IsMouseButtonReleased(.RIGHT)
 		if context_click {
 			hide_tooltip(&tooltip)
 			open_settings = show_context_menu(window)
@@ -236,7 +237,7 @@ run_shelf :: proc() {
 			break
 		}
 
-		result := ui_shelf(&ui, apps[:], settings, width, height, scroll, active_pid, context_click)
+		result := ui_shelf(&ui, apps[:], settings, width, height, scroll, active_pid, context_click || !interactive)
 		if result.clicked_pid != 0 {
 			target := send(^ns.Object, native_class("NSRunningApplication"),
 				"runningApplicationWithProcessIdentifier:", result.clicked_pid)

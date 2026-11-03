@@ -10,6 +10,12 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
+Settings_Dropdown :: enum { None, Show, Animation, Position }
+
+settings_height :: proc(settings: Settings) -> i32 {
+	return 558 if settings.auto_hide else 508
+}
+
 Shelf_Frame :: struct {
 	hovered: App,
 	tooltip_center: rl.Vector2,
@@ -25,7 +31,7 @@ hood_draw_shelf :: proc(apps: []App, settings: Settings, width, height: i32,
 
 @(export)
 hood_draw_settings :: proc(font: rl.Font, window: ^ns.Object, draft: ^Settings,
-	failed: bool, dropdown: ^bool) -> (bool, bool) {
+	failed: bool, dropdown: ^Settings_Dropdown) -> (bool, bool) {
 	work_sans = font
 	return settings_view(draft, failed, settings_theme(window), dropdown)
 }
@@ -100,7 +106,7 @@ ui_shelf :: proc(ui: ^Live_UI, apps: []App, settings: Settings, width, height: i
 }
 
 ui_settings :: proc(ui: ^Live_UI, window: ^ns.Object, draft: ^Settings,
-	failed: bool, dropdown: ^bool) -> (bool, bool) {
+	failed: bool, dropdown: ^Settings_Dropdown) -> (bool, bool) {
 	refresh_live_ui(ui)
 	draw := ui.settings if ui.settings != nil else hood_draw_settings
 	return draw(work_sans, window, draft, failed, dropdown)
