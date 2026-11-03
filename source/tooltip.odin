@@ -6,8 +6,8 @@ import rl "vendor:raylib"
 
 Tooltip :: struct {
 	window: ^ns.Object,
-	view: ^ns.Object,
-	pid: i32,
+	view:   ^ns.Object,
+	pid:    i32,
 }
 
 close_tooltip :: proc(tooltip: ^Tooltip) {
@@ -66,14 +66,20 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.
 	case .Right:
 		x = shelf_frame.origin.x - ns.Float(width) - gap
 	case .Bottom, .Top:
-		x = clamp(shelf_frame.origin.x + ns.Float(center.x) - ns.Float(width) / 2,
-			available.origin.x, available.origin.x + available.size.width - ns.Float(width))
+		x = clamp(
+			shelf_frame.origin.x + ns.Float(center.x) - ns.Float(width) / 2,
+			available.origin.x,
+			available.origin.x + available.size.width - ns.Float(width),
+		)
 		y = shelf_frame.origin.y + shelf_frame.size.height + gap
 		if edge == .Top {
 			y = shelf_frame.origin.y - height - gap
 		}
 	}
-	frame := ns.Rect{origin = {x, y}, size = {ns.Float(width), height}}
+	frame := ns.Rect {
+		origin = {x, y},
+		size   = {ns.Float(width), height},
+	}
 
 	if tooltip.window == nil {
 		tooltip.window = send(^ns.Object, native_class("NSWindow"), "new")

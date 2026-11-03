@@ -4,17 +4,21 @@ import ns "core:sys/darwin/Foundation"
 import rl "vendor:raylib"
 
 Shelf_Visibility :: struct {
-	resting, display: ns.Rect,
-	progress: f64,
-	approaching: bool,
-	hidden: bool,
+	resting, display:   ns.Rect,
+	progress:           f64,
+	approaching:        bool,
+	hidden:             bool,
 	requested, showing: bool,
-	request_started: f64,
+	request_started:    f64,
 }
 
 contains_point :: proc(rect: ns.Rect, point: ns.Point) -> bool {
-	return point.x >= rect.origin.x && point.x <= rect.origin.x + rect.size.width &&
-	       point.y >= rect.origin.y && point.y <= rect.origin.y + rect.size.height
+	return(
+		point.x >= rect.origin.x &&
+		point.x <= rect.origin.x + rect.size.width &&
+		point.y >= rect.origin.y &&
+		point.y <= rect.origin.y + rect.size.height \
+	)
 }
 
 reveal_area :: proc(resting, display: ns.Rect, edge: Shelf_Edge) -> (trigger, corridor: ns.Rect) {
@@ -95,10 +99,14 @@ update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, se
 	frame := state.resting
 	offset := ns.Float(12 * (1 - eased))
 	switch settings.edge {
-	case .Left: frame.origin.x -= offset
-	case .Right: frame.origin.x += offset
-	case .Bottom: frame.origin.y -= offset
-	case .Top: frame.origin.y += offset
+	case .Left:
+		frame.origin.x -= offset
+	case .Right:
+		frame.origin.x += offset
+	case .Bottom:
+		frame.origin.y -= offset
+	case .Top:
+		frame.origin.y += offset
 	}
 	if frame != send_rect(window, "frame") {
 		notify(window, "setFrame:display:", frame, ns.BOOL(true))

@@ -8,7 +8,7 @@ import ns "core:sys/darwin/Foundation"
 import "core:sys/posix"
 import rl "vendor:raylib"
 
-SETTINGS_WIDTH :: 480
+SETTINGS_WIDTH :: 434
 
 MIN_ICON_SIZE :: 24
 MAX_ICON_SIZE :: 48
@@ -19,42 +19,57 @@ MAX_SHOW_ANIMATION_TENTHS :: 5
 MAX_ICON_SPACING :: 48
 
 
-MAGNIFICATION_PERCENTS := [12]i32{0, 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80}
+MAGNIFICATION_PERCENTS := [10]i32{0, 5, 10, 15, 20, 25, 30, 40, 50, 60}
 
 SHOW_HIDE_DELAYS_MS := [5]i32{0, 50, 100, 200, 300}
 
 TOOLTIP_DELAYS_MS := [6]i32{0, 100, 250, 450, 750, 1000}
 
 DEFAULT_SETTINGS :: Settings {
-	icon_size      = 32,
-	background_rgb = 0x1D1D20,
-	icon_gap = 20,
-	horizontal_margin = 18,
-	vertical_margin = 14,
-	screen_edge_gap = 8,
-	animation_tenths = 3,
-	tooltip_delay_ms = 100,
-	magnification_percent = 60,
+	icon_size              = 32,
+	background_rgb         = 0x1D1D20,
+	icon_gap               = 20,
+	horizontal_margin      = 18,
+	vertical_margin        = 14,
+	screen_edge_gap        = 8,
+	animation_tenths       = 3,
+	tooltip_delay_ms       = 100,
+	magnification_percent  = 60,
 	hover_animation_tenths = 3,
 }
 
-Shelf_Edge :: enum { Left, Right, Bottom, Top }
-EDGE_KEYS := [Shelf_Edge]string{.Left = "left", .Right = "right", .Bottom = "bottom", .Top = "top"}
-EDGE_LABELS := [Shelf_Edge]cstring{.Left = "Left", .Right = "Right", .Bottom = "Bottom", .Top = "Top"}
+Shelf_Edge :: enum {
+	Left,
+	Right,
+	Bottom,
+	Top,
+}
+EDGE_KEYS := [Shelf_Edge]string {
+	.Left   = "left",
+	.Right  = "right",
+	.Bottom = "bottom",
+	.Top    = "top",
+}
+EDGE_LABELS := [Shelf_Edge]cstring {
+	.Left   = "Left",
+	.Right  = "Right",
+	.Bottom = "Bottom",
+	.Top    = "Top",
+}
 
 Settings :: struct {
-	edge:           Shelf_Edge,
-	icon_size:      i32,
-	corner_radius:  i32,
-	background_rgb: u32,
+	edge:                                         Shelf_Edge,
+	icon_size:                                    i32,
+	corner_radius:                                i32,
+	background_rgb:                               u32,
 	icon_gap, horizontal_margin, vertical_margin: i32,
-	screen_edge_gap: i32,
-	show_hide_delay_ms: i32,
-	auto_hide: bool,
-	animation_tenths: i32,
-	tooltip_delay_ms: i32,
-	magnification_percent: i32,
-	hover_animation_tenths: i32,
+	screen_edge_gap:                              i32,
+	show_hide_delay_ms:                           i32,
+	auto_hide:                                    bool,
+	animation_tenths:                             i32,
+	tooltip_delay_ms:                             i32,
+	magnification_percent:                        i32,
+	hover_animation_tenths:                       i32,
 }
 
 load_settings :: proc(path: string) -> Settings {
@@ -95,7 +110,7 @@ load_settings :: proc(path: string) -> Settings {
 			percent, valid := strconv.parse_int(value)
 			if valid {
 				for option in MAGNIFICATION_PERCENTS {
-					if percent == int(option) {
+					if min(percent, 60) == int(option) {
 						settings.magnification_percent = option
 						break
 					}
@@ -139,8 +154,10 @@ load_settings :: proc(path: string) -> Settings {
 		case "edge":
 			for edge in Shelf_Edge {
 				edge_key := EDGE_KEYS[edge]
-				if len(value) == len(edge_key) + 2 && value[1:len(value)-1] == edge_key &&
-				   (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+				if len(value) == len(edge_key) + 2 &&
+				   value[1:len(value) - 1] == edge_key &&
+				   (value[0] == '"' || value[0] == '\'') &&
+				   value[len(value) - 1] == value[0] {
 					settings.edge = edge
 				}
 			}
@@ -158,16 +175,16 @@ load_settings :: proc(path: string) -> Settings {
 			spacing, valid := strconv.parse_int(value)
 			if valid && spacing >= 0 && spacing <= MAX_ICON_SPACING {
 				switch key {
-				case "icon_gap": settings.icon_gap = i32(spacing)
-				case "horizontal_margin": settings.horizontal_margin = i32(spacing)
-				case "vertical_margin": settings.vertical_margin = i32(spacing)
+				case "icon_gap":
+					settings.icon_gap = i32(spacing)
+				case "horizontal_margin":
+					settings.horizontal_margin = i32(spacing)
+				case "vertical_margin":
+					settings.vertical_margin = i32(spacing)
 				}
 			}
 		case "background_color":
-			if len(value) == 9 &&
-			   value[1] == '#' &&
-			   (value[0] == '"' || value[0] == '\'') &&
-			   value[8] == value[0] {
+			if len(value) == 9 && value[1] == '#' && (value[0] == '"' || value[0] == '\'') && value[8] == value[0] {
 				rgb, valid := strconv.parse_uint(value[2:8], 16)
 				if valid && rgb <= 0xFFFFFF {
 					settings.background_rgb = u32(rgb)

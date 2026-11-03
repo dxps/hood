@@ -37,25 +37,13 @@ settings_theme :: proc(window: ^ns.Object) -> Settings_Theme {
 	defer notify(pool, "drain")
 
 	string_class := native_class("NSString")
-	aqua := send(
-		^ns.Object,
-		string_class,
-		"stringWithUTF8String:",
-		cstring("NSAppearanceNameAqua"),
-	)
-	dark := send(
-		^ns.Object,
-		string_class,
-		"stringWithUTF8String:",
-		cstring("NSAppearanceNameDarkAqua"),
-	)
+	aqua := send(^ns.Object, string_class, "stringWithUTF8String:", cstring("NSAppearanceNameAqua"))
+	dark := send(^ns.Object, string_class, "stringWithUTF8String:", cstring("NSAppearanceNameDarkAqua"))
 	names := send(^ns.Object, native_class("NSArray"), "arrayWithObject:", aqua)
 	names = send(^ns.Object, names, "arrayByAddingObject:", dark)
 	appearance := send(^ns.Object, window, "effectiveAppearance")
 	match := send(^ns.Object, appearance, "bestMatchFromAppearancesWithNames:", names)
-	return(
-		DARK_SETTINGS_THEME if send(ns.BOOL, match, "isEqualToString:", dark) else LIGHT_SETTINGS_THEME \
-	)
+	return DARK_SETTINGS_THEME if send(ns.BOOL, match, "isEqualToString:", dark) else LIGHT_SETTINGS_THEME
 }
 
 ui_button :: proc(
@@ -89,12 +77,7 @@ SETTINGS_CONTROL_RIGHT :: SETTINGS_WIDTH - 20
 SETTINGS_DROPDOWN_WIDTH :: 168
 SETTINGS_DROPDOWN_RIGHT :: SETTINGS_CONTROL_LEFT + SETTINGS_DROPDOWN_WIDTH
 
-repeat_button :: proc(
-	theme: Settings_Theme,
-	rect: rl.Rectangle,
-	label: cstring,
-	enabled: bool,
-) -> bool {
+repeat_button :: proc(theme: Settings_Theme, rect: rl.Rectangle, label: cstring, enabled: bool) -> bool {
 	initial_delay :: 0.35
 	repeat_interval :: 0.08
 	@(static) held: rl.Rectangle
@@ -124,14 +107,7 @@ repeat_button :: proc(
 	return false
 }
 
-stepper_row :: proc(
-	theme: Settings_Theme,
-	label: cstring,
-	y: i32,
-	value: ^i32,
-	minimum, maximum, step: i32,
-	enabled: bool,
-) {
+stepper_row :: proc(theme: Settings_Theme, label: cstring, y: i32, value: ^i32, minimum, maximum, step: i32, enabled: bool) {
 	button_width :: 40
 	stepper_width :: SETTINGS_DROPDOWN_WIDTH
 	left := f32(SETTINGS_CONTROL_LEFT)
@@ -148,20 +124,9 @@ stepper_row :: proc(
 	draw_text(label_value, i32(center - text_width(label_value, 16) / 2), y + 8, 16, theme.text)
 }
 
-dropdown_button :: proc(
-	theme: Settings_Theme,
-	dropdown: ^Settings_Dropdown,
-	kind: Settings_Dropdown,
-	y: i32,
-	label: cstring,
-) {
+dropdown_button :: proc(theme: Settings_Theme, dropdown: ^Settings_Dropdown, kind: Settings_Dropdown, y: i32, label: cstring) {
 	top := f32(y)
-	if ui_button(
-		   theme,
-		   {SETTINGS_CONTROL_LEFT, top, SETTINGS_DROPDOWN_WIDTH, 32},
-		   label,
-		   left_padding = 16,
-	   ) &&
+	if ui_button(theme, {SETTINGS_CONTROL_LEFT, top, SETTINGS_DROPDOWN_WIDTH, 32}, label, left_padding = 16) &&
 	   dropdown^ == .None {
 		dropdown^ = kind
 	}
@@ -183,12 +148,7 @@ dropdown_popup :: proc(
 ) -> int {
 	popup_height := f32(len(labels) * 31 + 8)
 	popup_y := min(f32(y), f32(rl.GetScreenHeight()) - popup_height - 8)
-	popup := rl.Rectangle {
-		SETTINGS_CONTROL_LEFT - extra_width,
-		popup_y,
-		SETTINGS_DROPDOWN_WIDTH + extra_width,
-		popup_height,
-	}
+	popup := rl.Rectangle{SETTINGS_CONTROL_LEFT - extra_width, popup_y, SETTINGS_DROPDOWN_WIDTH + extra_width, popup_height}
 	roundness := 2 * SETTINGS_BUTTON_RADIUS / min(popup.width, popup.height)
 	shadow := popup
 	shadow.y += 3
@@ -222,14 +182,7 @@ settings_view :: proc(
 	defer rl.EndDrawing()
 	rl.ClearBackground(theme.background)
 	show_labels := [2]cstring{"Always", "Auto-Hide"}
-	animation_labels := [6]cstring {
-		"0 seconds (no animation)",
-		"100 ms",
-		"200 ms",
-		"300 ms",
-		"400 ms",
-		"500 ms",
-	}
+	animation_labels := [6]cstring{"0 seconds (no animation)", "100 ms", "200 ms", "300 ms", "400 ms", "500 ms"}
 	was_open := dropdown^ != .None
 	offset: i32 = 50
 	draw_text("Show", 20, 28, 16, theme.text)
@@ -267,20 +220,7 @@ settings_view :: proc(
 	}
 	draw_text("Tooltip delay", 20, 78 + offset, 16, theme.text)
 	dropdown_button(theme, dropdown, .Tooltip_Delay, 70 + offset, tooltip_labels[tooltip_choice])
-	magnification_labels := [12]cstring {
-		"Off",
-		"5%",
-		"10%",
-		"15%",
-		"20%",
-		"25%",
-		"30%",
-		"40%",
-		"50%",
-		"60%",
-		"70%",
-		"80%",
-	}
+	magnification_labels := [10]cstring{"Off", "5%", "10%", "15%", "20%", "25%", "30%", "40%", "50%", "60%"}
 	magnification_choice := 0
 	for percent, index in MAGNIFICATION_PERCENTS {
 		if draft.magnification_percent == percent {
@@ -288,94 +228,25 @@ settings_view :: proc(
 			break
 		}
 	}
-	stepper_row(
-		theme,
-		"Corner radius",
-		110 + offset,
-		&draft.corner_radius,
-		0,
-		MAX_CORNER_RADIUS,
-		2,
-		!was_open,
-	)
+	stepper_row(theme, "Corner radius", 110 + offset, &draft.corner_radius, 0, MAX_CORNER_RADIUS, 2, !was_open)
 	draw_text("Background color", 20, 158 + offset, 16, theme.text)
-	draw_text(
-		fmt.ctprintf("#%06X", draft.background_rgb),
-		SETTINGS_CONTROL_LEFT,
-		158 + offset,
-		16,
-		theme.text,
-	)
+	draw_text(fmt.ctprintf("#%06X", draft.background_rgb), SETTINGS_CONTROL_LEFT, 158 + offset, 16, theme.text)
 	pick_color =
-		ui_button(
-			theme,
-			{SETTINGS_DROPDOWN_RIGHT - 74, f32(150 + offset), 74, 30},
-			"Choose",
-			font_size = 13,
-		) &&
-		!was_open
+		ui_button(theme, {SETTINGS_DROPDOWN_RIGHT - 74, f32(150 + offset), 74, 30}, "Choose", font_size = 13) && !was_open
 
 	rl.DrawLine(20, 192 + offset, SETTINGS_CONTROL_RIGHT, 192 + offset, theme.popup_border)
 	draw_text("Icons", 20, 205 + offset, 20, theme.text)
-	stepper_row(
-		theme,
-		"Size",
-		234 + offset,
-		&draft.icon_size,
-		MIN_ICON_SIZE,
-		MAX_ICON_SIZE,
-		4,
-		!was_open,
-	)
+	stepper_row(theme, "Size", 234 + offset, &draft.icon_size, MIN_ICON_SIZE, MAX_ICON_SIZE, 4, !was_open)
 	draw_text("Magnification size", 20, 282 + offset, 16, theme.text)
-	dropdown_button(
-		theme,
-		dropdown,
-		.Hover_Magnification,
-		274 + offset,
-		magnification_labels[magnification_choice],
-	)
+	dropdown_button(theme, dropdown, .Hover_Magnification, 274 + offset, magnification_labels[magnification_choice])
 	draw_text("Magnification animation", 20, 322 + offset, 16, theme.text)
-	dropdown_button(
-		theme,
-		dropdown,
-		.Hover_Animation,
-		314 + offset,
-		animation_labels[draft.hover_animation_tenths],
-	)
+	dropdown_button(theme, dropdown, .Hover_Animation, 314 + offset, animation_labels[draft.hover_animation_tenths])
 
 	rl.DrawLine(20, 356 + offset, SETTINGS_CONTROL_RIGHT, 356 + offset, theme.popup_border)
 	draw_text("Spacing", 20, 370 + offset, 20, theme.text)
-	stepper_row(
-		theme,
-		"Between icons",
-		402 + offset,
-		&draft.icon_gap,
-		0,
-		MAX_ICON_SPACING,
-		2,
-		!was_open,
-	)
-	stepper_row(
-		theme,
-		"Left / right margins",
-		446 + offset,
-		&draft.horizontal_margin,
-		0,
-		MAX_ICON_SPACING,
-		2,
-		!was_open,
-	)
-	stepper_row(
-		theme,
-		"Top / bottom margins",
-		490 + offset,
-		&draft.vertical_margin,
-		0,
-		MAX_ICON_SPACING,
-		2,
-		!was_open,
-	)
+	stepper_row(theme, "Between icons", 402 + offset, &draft.icon_gap, 0, MAX_ICON_SPACING, 2, !was_open)
+	stepper_row(theme, "Left / right margins", 446 + offset, &draft.horizontal_margin, 0, MAX_ICON_SPACING, 2, !was_open)
+	stepper_row(theme, "Top / bottom margins", 490 + offset, &draft.vertical_margin, 0, MAX_ICON_SPACING, 2, !was_open)
 	stepper_row(
 		theme,
 		"Between Dock and screen edge",
@@ -389,15 +260,12 @@ settings_view :: proc(
 	if failed {
 		draw_text("Could not save hood.toml", 20, 568 + offset, 16, theme.error)
 	}
-	done =
-		ui_button(theme, {SETTINGS_CONTROL_RIGHT - 74, f32(584 + offset), 74, 32}, "OK") &&
-		!was_open
+	done = ui_button(theme, {SETTINGS_DROPDOWN_RIGHT - 74, f32(584 + offset), 74, 32}, "OK") && !was_open
 	if dropdown^ != .None {
 		switch dropdown^ {
 		case .None:
 		case .Show:
-			if choice := dropdown_popup(theme, 56, show_labels[:], int(draft.auto_hide), was_open);
-			   choice >= 0 {
+			if choice := dropdown_popup(theme, 56, show_labels[:], int(draft.auto_hide), was_open); choice >= 0 {
 				draft.auto_hide = choice == 1
 			}
 		case .Animation:
@@ -412,18 +280,12 @@ settings_view :: proc(
 				draft.animation_tenths = i32(choice)
 			}
 		case .Show_Hide_Delay:
-			if choice := dropdown_popup(theme, 146, delay_labels[:], delay_choice, was_open);
-			   choice >= 0 {
+			if choice := dropdown_popup(theme, 146, delay_labels[:], delay_choice, was_open); choice >= 0 {
 				draft.show_hide_delay_ms = SHOW_HIDE_DELAYS_MS[choice]
 			}
 		case .Hover_Magnification:
-			if choice := dropdown_popup(
-				theme,
-				310 + offset,
-				magnification_labels[:],
-				magnification_choice,
-				was_open,
-			); choice >= 0 {
+			if choice := dropdown_popup(theme, 310 + offset, magnification_labels[:], magnification_choice, was_open);
+			   choice >= 0 {
 				draft.magnification_percent = MAGNIFICATION_PERCENTS[choice]
 			}
 		case .Hover_Animation:
@@ -437,24 +299,12 @@ settings_view :: proc(
 				draft.hover_animation_tenths = i32(choice + 1)
 			}
 		case .Tooltip_Delay:
-			if choice := dropdown_popup(
-				theme,
-				106 + offset,
-				tooltip_labels[:],
-				tooltip_choice,
-				was_open,
-			); choice >= 0 {
+			if choice := dropdown_popup(theme, 106 + offset, tooltip_labels[:], tooltip_choice, was_open); choice >= 0 {
 				draft.tooltip_delay_ms = TOOLTIP_DELAYS_MS[choice]
 			}
 		case .Position:
 			position_labels := [4]cstring{"Left", "Right", "Bottom", "Top"}
-			if choice := dropdown_popup(
-				theme,
-				56 + offset,
-				position_labels[:],
-				int(draft.edge),
-				was_open,
-			); choice >= 0 {
+			if choice := dropdown_popup(theme, 56 + offset, position_labels[:], int(draft.edge), was_open); choice >= 0 {
 				draft.edge = Shelf_Edge(choice)
 			}
 		}
@@ -485,12 +335,7 @@ draw_shelf :: proc(
 	rl.ClearBackground(rl.BLANK)
 	shelf_rect := rl.Rectangle{0, 0, f32(width), f32(height)}
 	roundness := min(1, 2 * f32(settings.corner_radius) / min(shelf_rect.width, shelf_rect.height))
-	rl.DrawRectangleRounded(
-		shelf_rect,
-		roundness,
-		12,
-		rl.GetColor(settings.background_rgb << 8 | 0xFF),
-	)
+	rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
 
 	raised_icon: rl.Texture2D
 	raised_rect: rl.Rectangle
@@ -505,12 +350,7 @@ draw_shelf :: proc(
 		padding := min(4, f32(settings.icon_gap) / 2)
 		x_padding := min(padding, f32(settings.horizontal_margin))
 		y_padding := min(padding, f32(settings.vertical_margin))
-		row := rl.Rectangle {
-			icon.x - x_padding,
-			icon.y - y_padding,
-			size + 2 * x_padding,
-			size + 2 * y_padding,
-		}
+		row := rl.Rectangle{icon.x - x_padding, icon.y - y_padding, size + 2 * x_padding, size + 2 * y_padding}
 		hover := !context_click && pointer_inside && rl.CheckCollisionPointRec(mouse, row)
 		if hover {
 			result.hovered = app
@@ -563,10 +403,6 @@ draw_app_icon :: proc(texture: rl.Texture2D, icon: rl.Rectangle) {
 		source := rl.Rectangle{0, 0, f32(texture.width), f32(texture.height)}
 		rl.DrawTexturePro(texture, source, icon, {}, 0, rl.WHITE)
 	} else {
-		rl.DrawCircleV(
-			{icon.x + icon.width / 2, icon.y + icon.height / 2},
-			icon.width / 3,
-			rl.GRAY,
-		)
+		rl.DrawCircleV({icon.x + icon.width / 2, icon.y + icon.height / 2}, icon.width / 3, rl.GRAY)
 	}
 }

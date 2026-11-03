@@ -10,8 +10,14 @@ load_ui_font :: proc() {
 	for &codepoint, index in codepoints {
 		codepoint = rune(index) + 32
 	}
-	work_sans = rl.LoadFontFromMemory(".ttf", raw_data(font_data), i32(len(font_data)),
-		48, raw_data(codepoints[:]), i32(len(codepoints)))
+	work_sans = rl.LoadFontFromMemory(
+		".ttf",
+		raw_data(font_data),
+		i32(len(font_data)),
+		48,
+		raw_data(codepoints[:]),
+		i32(len(codepoints)),
+	)
 	rl.SetTextureFilter(work_sans.texture, .BILINEAR)
 }
 

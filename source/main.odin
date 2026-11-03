@@ -3,12 +3,12 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:time"
 import ns "core:sys/darwin/Foundation"
+import "core:time"
 import rl "vendor:raylib"
 
 Shelf_Layout :: struct {
-	horizontal: bool,
+	horizontal:                     bool,
 	length, thickness, start, step: i32,
 }
 
@@ -32,9 +32,9 @@ shelf_layout :: proc(settings: Settings, count: int) -> Shelf_Layout {
 }
 
 App :: struct {
-	pid: i32,
-	name: string,
-	icon: rl.Texture2D,
+	pid:         i32,
+	name:        string,
+	icon:        rl.Texture2D,
 	hover_scale: f32,
 }
 
@@ -59,8 +59,13 @@ load_icon :: proc(app: ^ns.Object) -> rl.Texture2D {
 	}
 	bitmap := send(^ns.Object, native_class("NSBitmapImageRep"), "imageRepWithData:", tiff)
 	// NSBitmapImageFileTypePNG
-	png := send(^ns.Object, bitmap, "representationUsingType:properties:", uint(4),
-		send(^ns.Object, native_class("NSDictionary"), "dictionary"))
+	png := send(
+		^ns.Object,
+		bitmap,
+		"representationUsingType:properties:",
+		uint(4),
+		send(^ns.Object, native_class("NSDictionary"), "dictionary"),
+	)
 	if png == nil {
 		return {}
 	}
@@ -78,10 +83,9 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
 
 	running := send(^ns.Object, workspace, "runningApplications")
 	next: [dynamic]App
-	for index in 0..<send(uint, running, "count") {
+	for index in 0 ..< send(uint, running, "count") {
 		app := send(^ns.Object, running, "objectAtIndex:", index)
-		if send(int, app, "activationPolicy") != 0 ||
-		   send(ns.BOOL, app, "isTerminated") {
+		if send(int, app, "activationPolicy") != 0 || send(ns.BOOL, app, "isTerminated") {
 			continue
 		}
 		pid := send(i32, app, "processIdentifier")
@@ -142,12 +146,19 @@ shelf_frames :: proc(window: ^ns.Object, rows: int, settings: Settings) -> (rest
 	y := available.origin.y + (available.size.height - height) / 2
 	gap := ns.Float(settings.screen_edge_gap)
 	switch settings.edge {
-	case .Left: x = available.origin.x + gap
-	case .Right: x = available.origin.x + available.size.width - width - gap
-	case .Bottom: y = available.origin.y + gap
-	case .Top: y = available.origin.y + available.size.height - height - gap
+	case .Left:
+		x = available.origin.x + gap
+	case .Right:
+		x = available.origin.x + available.size.width - width - gap
+	case .Bottom:
+		y = available.origin.y + gap
+	case .Top:
+		y = available.origin.y + available.size.height - height - gap
 	}
-	resting = ns.Rect{origin = {x, y}, size = {width, height}}
+	resting = ns.Rect {
+		origin = {x, y},
+		size   = {width, height},
+	}
 	display = send_rect((^ns.Object)(screen), "frame")
 	return
 }
@@ -202,7 +213,11 @@ run_shelf :: proc() {
 	}
 	active_pid: i32
 	next_refresh, next_app_refresh: f64
-	visibility := Shelf_Visibility{progress = 1, requested = true, showing = true}
+	visibility := Shelf_Visibility {
+		progress  = 1,
+		requested = true,
+		showing   = true,
+	}
 	scroll: f32
 	settings_process: os.Process
 	defer {
@@ -217,6 +232,7 @@ run_shelf :: proc() {
 	defer close_tooltip(&tooltip)
 	hovered_pid: i32
 	hover_started: f64
+	startup_visible_until := rl.GetTime() + 2
 	for !rl.WindowShouldClose() {
 		now := rl.GetTime()
 		if now >= next_app_refresh {
@@ -241,7 +257,7 @@ run_shelf :: proc() {
 		}
 
 		was_hidden := visibility.hidden
-		interactive := update_shelf_visibility(window, &visibility, settings, keep_visible = settings_process.pid != 0)
+		interactive := update_shelf_visibility(window, &visibility, settings, keep_visible = now < startup_visible_until || settings_process.pid != 0)
 		if visibility.hidden {
 			hide_tooltip(&tooltip)
 			hovered_pid = 0
@@ -270,8 +286,12 @@ run_shelf :: proc() {
 
 		result := ui_shelf(&ui, apps[:], settings, width, height, scroll, active_pid, context_click || !interactive)
 		if result.clicked_pid != 0 {
-			target := send(^ns.Object, native_class("NSRunningApplication"),
-				"runningApplicationWithProcessIdentifier:", result.clicked_pid)
+			target := send(
+				^ns.Object,
+				native_class("NSRunningApplication"),
+				"runningApplicationWithProcessIdentifier:",
+				result.clicked_pid,
+			)
 			send(ns.BOOL, target, "activateWithOptions:", uint(0))
 		}
 		hovered := result.hovered
@@ -287,15 +307,16 @@ run_shelf :: proc() {
 		if open_settings {
 			fmt.eprintln("Hood: Settings selected")
 			if settings_process.pid != 0 {
-				target := send(^ns.Object, native_class("NSRunningApplication"),
-					"runningApplicationWithProcessIdentifier:", i32(settings_process.pid))
+				target := send(
+					^ns.Object,
+					native_class("NSRunningApplication"),
+					"runningApplicationWithProcessIdentifier:",
+					i32(settings_process.pid),
+				)
 				send(ns.BOOL, target, "activateWithOptions:", uint(0))
 			} else if executable_err == nil {
 				err: os.Error
-				settings_process, err = os.process_start({
-					command = {executable, "--settings"},
-					stderr = os.stderr,
-				})
+				settings_process, err = os.process_start({command = {executable, "--settings"}, stderr = os.stderr})
 				if err != nil {
 					fmt.eprintfln("Could not open Hood Settings: %v", err)
 				} else {

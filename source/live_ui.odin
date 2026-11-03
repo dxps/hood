@@ -10,38 +10,61 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-Settings_Dropdown :: enum { None, Show, Animation, Show_Hide_Delay, Position, Tooltip_Delay, Hover_Magnification, Hover_Animation }
+Settings_Dropdown :: enum {
+	None,
+	Show,
+	Animation,
+	Show_Hide_Delay,
+	Position,
+	Tooltip_Delay,
+	Hover_Magnification,
+	Hover_Animation,
+}
 
 settings_height :: proc(settings: Settings) -> i32 {
 	return 688 + (90 if settings.auto_hide else 0)
 }
 
 Shelf_Frame :: struct {
-	hovered: App,
+	hovered:        App,
 	tooltip_center: rl.Vector2,
-	clicked_pid: i32,
+	clicked_pid:    i32,
 }
 
 // Keep the module boundary here so changes to these signatures rebuild the host.
 @(export)
-hood_draw_shelf :: proc(apps: []App, settings: Settings, width, height: i32,
-	scroll: f32, active_pid: i32, context_click: bool) -> Shelf_Frame {
+hood_draw_shelf :: proc(
+	apps: []App,
+	settings: Settings,
+	width, height: i32,
+	scroll: f32,
+	active_pid: i32,
+	context_click: bool,
+) -> Shelf_Frame {
 	return draw_shelf(apps, settings, width, height, scroll, active_pid, context_click)
 }
 
 @(export)
-hood_draw_settings :: proc(font: rl.Font, window: ^ns.Object, draft: ^Settings,
-	failed: bool, dropdown: ^Settings_Dropdown) -> (bool, bool) {
+hood_draw_settings :: proc(
+	font: rl.Font,
+	window: ^ns.Object,
+	draft: ^Settings,
+	failed: bool,
+	dropdown: ^Settings_Dropdown,
+) -> (
+	bool,
+	bool,
+) {
 	work_sans = font
 	return settings_view(draft, failed, settings_theme(window), dropdown)
 }
 
 Live_UI :: struct {
-	library: dynlib.Library,
-	path: string,
+	library:    dynlib.Library,
+	path:       string,
 	last_check: f64,
-	shelf: type_of(hood_draw_shelf),
-	settings: type_of(hood_draw_settings),
+	shelf:      type_of(hood_draw_shelf),
+	settings:   type_of(hood_draw_settings),
 }
 
 refresh_live_ui :: proc(ui: ^Live_UI) {
@@ -98,15 +121,30 @@ close_live_ui :: proc(ui: ^Live_UI) {
 	delete(ui.path)
 }
 
-ui_shelf :: proc(ui: ^Live_UI, apps: []App, settings: Settings, width, height: i32,
-	scroll: f32, active_pid: i32, context_click: bool) -> Shelf_Frame {
+ui_shelf :: proc(
+	ui: ^Live_UI,
+	apps: []App,
+	settings: Settings,
+	width, height: i32,
+	scroll: f32,
+	active_pid: i32,
+	context_click: bool,
+) -> Shelf_Frame {
 	refresh_live_ui(ui)
 	draw := ui.shelf if ui.shelf != nil else hood_draw_shelf
 	return draw(apps, settings, width, height, scroll, active_pid, context_click)
 }
 
-ui_settings :: proc(ui: ^Live_UI, window: ^ns.Object, draft: ^Settings,
-	failed: bool, dropdown: ^Settings_Dropdown) -> (bool, bool) {
+ui_settings :: proc(
+	ui: ^Live_UI,
+	window: ^ns.Object,
+	draft: ^Settings,
+	failed: bool,
+	dropdown: ^Settings_Dropdown,
+) -> (
+	bool,
+	bool,
+) {
 	refresh_live_ui(ui)
 	draw := ui.settings if ui.settings != nil else hood_draw_settings
 	return draw(work_sans, window, draft, failed, dropdown)

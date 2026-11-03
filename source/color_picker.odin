@@ -7,9 +7,22 @@ set_color_panel_rgb :: proc(panel: ^ns.Object, rgb: u32) {
 	channel :: proc(value: u32) -> ns.Float {
 		return ns.Float(value & 0xFF) / 255
 	}
-	make_color := cast(proc "c" (^ns.Object, ns.SEL, ns.Float, ns.Float, ns.Float, ns.Float) -> ^ns.Object)objc_msgSend
-	color := make_color(native_class("NSColor"), ns.sel_registerName("colorWithSRGBRed:green:blue:alpha:"),
-		channel(rgb >> 16), channel(rgb >> 8), channel(rgb), 1)
+	make_color := cast(proc "c" (
+		_: ^ns.Object,
+		_: ns.SEL,
+		_: ns.Float,
+		_: ns.Float,
+		_: ns.Float,
+		_: ns.Float,
+	) -> ^ns.Object)objc_msgSend
+	color := make_color(
+		native_class("NSColor"),
+		ns.sel_registerName("colorWithSRGBRed:green:blue:alpha:"),
+		channel(rgb >> 16),
+		channel(rgb >> 8),
+		channel(rgb),
+		1,
+	)
 	notify(panel, "setColor:", color)
 }
 
@@ -27,7 +40,5 @@ color_panel_rgb :: proc(panel: ^ns.Object) -> (u32, bool) {
 		value := f64(send(ns.Float, color, selector))
 		return u32(math.round(clamp(value, 0, 1) * 255))
 	}
-	return channel(color, "redComponent") << 16 |
-	       channel(color, "greenComponent") << 8 |
-	       channel(color, "blueComponent"), true
+	return channel(color, "redComponent") << 16 | channel(color, "greenComponent") << 8 | channel(color, "blueComponent"), true
 }

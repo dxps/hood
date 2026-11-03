@@ -61,8 +61,12 @@ show_context_menu :: proc(window: ^ns.Object) -> bool {
 		attributes := send(^ns.Object, native_class("NSDictionary"), "dictionaryWithObject:forKey:", font, key)
 		label := send(^ns.Object, native_class("NSAttributedString"), "alloc")
 		// AppKit controls the row height. Nonbreaking spaces add horizontal room to the title.
-		padded_title := send(^ns.Object, native_class("NSString"), "stringWithUTF8String:",
-			cstring("\u00a0\u00a0Settings\u00a0\u00a0"))
+		padded_title := send(
+			^ns.Object,
+			native_class("NSString"),
+			"stringWithUTF8String:",
+			cstring("\u00a0\u00a0Settings\u00a0\u00a0"),
+		)
 		label = send(^ns.Object, label, "initWithString:attributes:", padded_title, attributes)
 		notify(item, "setAttributedTitle:", label)
 		notify(label, "release")
@@ -74,6 +78,6 @@ show_context_menu :: proc(window: ^ns.Object) -> bool {
 	view := send(^ns.Object, window, "contentView")
 	point := send(ns.Point, window, "mouseLocationOutsideOfEventStream")
 	// AppKit handles placement, selection, and dismissal in its menu tracking loop.
-	popup := cast(proc "c" (^ns.Object, ns.SEL, ^ns.Object, ns.Point, ^ns.Object) -> ns.BOOL)objc_msgSend
+	popup := cast(proc "c" (_: ^ns.Object, _: ns.SEL, _: ^ns.Object, _: ns.Point, _: ^ns.Object) -> ns.BOOL)objc_msgSend
 	return popup(menu, ns.sel_registerName("popUpMenuPositioningItem:atLocation:inView:"), nil, point, view)
 }
