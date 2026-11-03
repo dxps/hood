@@ -84,6 +84,17 @@ ui_button :: proc(
 	return hover && rl.IsMouseButtonReleased(.LEFT)
 }
 
+spacing_row :: proc(theme: Settings_Theme, label: cstring, y: i32, value: ^i32, enabled: bool) {
+	draw_text(label, 20, y + 8, 16, theme.text)
+	if ui_button(theme, {176, f32(y), 34, 32}, "-") && enabled {
+		value^ = max(0, value^ - 2)
+	}
+	draw_text(fmt.ctprintf("%d px", value^), 219, y + 8, 16, theme.text)
+	if ui_button(theme, {280, f32(y), 34, 32}, "+") && enabled {
+		value^ = min(MAX_ICON_SPACING, value^ + 2)
+	}
+}
+
 settings_view :: proc(
 	draft: ^Settings,
 	failed: bool,
@@ -122,10 +133,15 @@ settings_view :: proc(
 	draw_text("Background color", 20, 211, 16, theme.text)
 	draw_text(fmt.ctprintf("#%06X", draft.background_rgb), 150, 211, 16, theme.text)
 	pick_color = ui_button(theme, {240, 204, 74, 30}, "Choose", font_size = 13) && !was_open
+	rl.DrawLine(20, 246, 314, 246, theme.popup_border)
+	draw_text("Spacing", 20, 260, 20, theme.text)
+	spacing_row(theme, "Between icons", 292, &draft.icon_gap, !was_open)
+	spacing_row(theme, "Left / right margins", 336, &draft.horizontal_margin, !was_open)
+	spacing_row(theme, "Top / bottom margins", 380, &draft.vertical_margin, !was_open)
 	if failed {
-		draw_text("Could not save hood.toml", 20, 251, 16, theme.error)
+		draw_text("Could not save hood.toml", 20, 426, 16, theme.error)
 	}
-	done = ui_button(theme, {240, 275, 74, 32}, "OK") && !was_open
+	done = ui_button(theme, {240, 442, 74, 32}, "OK") && !was_open
 	if dropdown^ {
 		popup := rl.Rectangle{150, 92, 164, 132}
 		roundness := 2 * SETTINGS_BUTTON_RADIUS / min(popup.width, popup.height)
@@ -148,7 +164,7 @@ settings_view :: proc(
 
 draw_shelf :: proc(apps: []App, settings: Settings, width, height: i32,
 	scroll: f32, active_pid: i32, context_click: bool) -> (result: Shelf_Frame) {
-	horizontal := settings.edge == .Top || settings.edge == .Bottom
+	layout := shelf_layout(settings, len(apps))
 	mouse := rl.GetMousePosition()
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLANK)
@@ -157,12 +173,17 @@ draw_shelf :: proc(apps: []App, settings: Settings, width, height: i32,
 	rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
 	
 	for app, index in apps {
-		offset := f32(PADDING + index * ROW_HEIGHT) - scroll
-		row := rl.Rectangle{8, offset, SHELF_WIDTH - 16, ROW_HEIGHT - 4}
-		if horizontal {
-			row = {offset, 8, ROW_HEIGHT - 4, SHELF_WIDTH - 16}
+		size := f32(settings.icon_size)
+		offset := f32(layout.start + i32(index) * layout.step) - scroll
+		icon := rl.Rectangle{f32(settings.horizontal_margin), offset, size, size}
+		if layout.horizontal {
+			icon = {offset, f32(settings.vertical_margin), size, size}
 		}
-		center := rl.Vector2{row.x + row.width / 2, row.y + row.height / 2}
+		center := rl.Vector2{icon.x + size / 2, icon.y + size / 2}
+		padding := min(4, f32(settings.icon_gap) / 2)
+		x_padding := min(padding, f32(settings.horizontal_margin))
+		y_padding := min(padding, f32(settings.vertical_margin))
+		row := rl.Rectangle{icon.x - x_padding, icon.y - y_padding, size + 2 * x_padding, size + 2 * y_padding}
 		hover := !context_click && rl.IsCursorOnScreen() && rl.CheckCollisionPointRec(mouse, row)
 		if hover {
 			result.hovered = app
@@ -173,8 +194,7 @@ draw_shelf :: proc(apps: []App, settings: Settings, width, height: i32,
 		}
 		if app.icon.id != 0 {
 			source := rl.Rectangle{0, 0, f32(app.icon.width), f32(app.icon.height)}
-			size := f32(settings.icon_size)
-			rl.DrawTexturePro(app.icon, source, {center.x - size / 2, center.y - size / 2, size, size}, {}, 0, rl.WHITE)
+			rl.DrawTexturePro(app.icon, source, icon, {}, 0, rl.WHITE)
 		} else {
 			rl.DrawCircle(i32(center.x), i32(center.y), 10, rl.GRAY)
 		}

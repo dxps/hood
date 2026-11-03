@@ -6,9 +6,19 @@ import "core:strings"
 import ns "core:sys/darwin/Foundation"
 import rl "vendor:raylib"
 
-SHELF_WIDTH :: 68
-ROW_HEIGHT :: 52
-PADDING :: 6
+Shelf_Layout :: struct {
+	horizontal: bool,
+	length, thickness, start, step: i32,
+}
+
+shelf_layout :: proc(settings: Settings, count: int) -> Shelf_Layout {
+	horizontal := settings.edge == .Top || settings.edge == .Bottom
+	along := horizontal ? settings.horizontal_margin : settings.vertical_margin
+	across := horizontal ? settings.vertical_margin : settings.horizontal_margin
+	step := settings.icon_size + settings.icon_gap
+	length := 2 * along + settings.icon_size + i32(max(0, count - 1)) * step
+	return {horizontal, length, settings.icon_size + 2 * across, along, step}
+}
 
 App :: struct {
 	pid: i32,
@@ -107,12 +117,12 @@ position_shelf :: proc(window: ^ns.Object, rows: int, settings: Settings) {
 		return
 	}
 	available := send_rect((^ns.Object)(screen), "visibleFrame")
-	length := ns.Float(max(1, rows) * ROW_HEIGHT + 2 * PADDING)
-	width := ns.Float(SHELF_WIDTH)
-	height := min(length, available.size.height)
-	if settings.edge == .Top || settings.edge == .Bottom {
-		width = min(length, available.size.width)
-		height = SHELF_WIDTH
+	layout := shelf_layout(settings, rows)
+	width := ns.Float(layout.thickness)
+	height := min(ns.Float(layout.length), available.size.height)
+	if layout.horizontal {
+		width = min(ns.Float(layout.length), available.size.width)
+		height = ns.Float(layout.thickness)
 	}
 	x := available.origin.x + (available.size.width - width) / 2
 	y := available.origin.y + (available.size.height - height) / 2
@@ -154,7 +164,8 @@ run_shelf :: proc() {
 	defer notify(pool, "drain")
 
 	rl.SetConfigFlags({.WINDOW_UNDECORATED, .WINDOW_TRANSPARENT, .WINDOW_TOPMOST, .WINDOW_HIGHDPI, .VSYNC_HINT})
-	rl.InitWindow(SHELF_WIDTH, ROW_HEIGHT + 2 * PADDING, "Hood")
+	initial_layout := shelf_layout(settings, 0)
+	rl.InitWindow(initial_layout.thickness, initial_layout.length, "Hood")
 	defer rl.CloseWindow()
 	load_ui_font()
 	defer rl.UnloadFont(work_sans)
@@ -211,10 +222,10 @@ run_shelf :: proc() {
 		}
 
 		width, height := rl.GetScreenWidth(), rl.GetScreenHeight()
-		horizontal := settings.edge == .Top || settings.edge == .Bottom
-		viewport := horizontal ? width : height
-		max_scroll := f32(max(0, len(apps) * ROW_HEIGHT + 2 * PADDING - int(viewport)))
-		scroll = clamp(scroll - rl.GetMouseWheelMove() * ROW_HEIGHT, 0, max_scroll)
+		layout := shelf_layout(settings, len(apps))
+		viewport := layout.horizontal ? width : height
+		max_scroll := f32(max(0, layout.length - viewport))
+		scroll = clamp(scroll - rl.GetMouseWheelMove() * f32(layout.step), 0, max_scroll)
 		open_settings := false
 		context_click := rl.IsMouseButtonReleased(.RIGHT)
 		if context_click {

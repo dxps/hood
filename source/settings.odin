@@ -11,11 +11,15 @@ import rl "vendor:raylib"
 MIN_ICON_SIZE :: 24
 MAX_ICON_SIZE :: 48
 MAX_CORNER_RADIUS :: 24
+MAX_ICON_SPACING :: 48
 
 
 DEFAULT_SETTINGS :: Settings {
 	icon_size      = 32,
 	background_rgb = 0x1D1D20,
+	icon_gap = 20,
+	horizontal_margin = 18,
+	vertical_margin = 14,
 }
 
 Shelf_Edge :: enum { Left, Right, Bottom, Top }
@@ -27,6 +31,7 @@ Settings :: struct {
 	icon_size:      i32,
 	corner_radius:  i32,
 	background_rgb: u32,
+	icon_gap, horizontal_margin, vertical_margin: i32,
 }
 
 load_settings :: proc(path: string) -> Settings {
@@ -52,7 +57,8 @@ load_settings :: proc(path: string) -> Settings {
 			value, _, _ = strings.partition(value, "#")
 			value = strings.trim_space(value)
 		}
-		switch strings.trim_space(key) {
+		key = strings.trim_space(key)
+		switch key {
 		case "edge":
 			for edge in Shelf_Edge {
 				edge_key := EDGE_KEYS[edge]
@@ -70,6 +76,15 @@ load_settings :: proc(path: string) -> Settings {
 			radius, valid := strconv.parse_int(value)
 			if valid && radius >= 0 && radius <= MAX_CORNER_RADIUS {
 				settings.corner_radius = i32(radius)
+			}
+		case "icon_gap", "horizontal_margin", "vertical_margin":
+			spacing, valid := strconv.parse_int(value)
+			if valid && spacing >= 0 && spacing <= MAX_ICON_SPACING {
+				switch key {
+				case "icon_gap": settings.icon_gap = i32(spacing)
+				case "horizontal_margin": settings.horizontal_margin = i32(spacing)
+				case "vertical_margin": settings.vertical_margin = i32(spacing)
+				}
 			}
 		case "background_color":
 			if len(value) == 9 &&
@@ -96,11 +111,14 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\n",
+		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\n",
 		edge,
 		settings.icon_size,
 		settings.corner_radius,
 		settings.background_rgb,
+		settings.icon_gap,
+		settings.horizontal_margin,
+		settings.vertical_margin,
 	)
 	_, err := os.write(file, transmute([]byte)text)
 	close_err := os.close(file)
@@ -119,7 +137,7 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	defer notify(pool, "drain")
 
 	rl.SetConfigFlags({.WINDOW_HIGHDPI, .VSYNC_HINT, .WINDOW_TOPMOST})
-	rl.InitWindow(334, 327, "Settings")
+	rl.InitWindow(334, 494, "Settings")
 	defer rl.CloseWindow()
 	load_ui_font()
 	defer rl.UnloadFont(work_sans)
