@@ -107,16 +107,22 @@ position_shelf :: proc(window: ^ns.Object, rows: int, settings: Settings) {
 		return
 	}
 	available := send_rect((^ns.Object)(screen), "visibleFrame")
+	length := ns.Float(max(1, rows) * ROW_HEIGHT + 2 * PADDING)
 	width := ns.Float(SHELF_WIDTH)
-	height := min(ns.Float(max(1, rows) * ROW_HEIGHT + 2 * PADDING), available.size.height)
-	x := available.origin.x + 8
-	if settings.right_edge {
-		x = available.origin.x + available.size.width - width - 8
+	height := min(length, available.size.height)
+	if settings.edge == .Top || settings.edge == .Bottom {
+		width = min(length, available.size.width)
+		height = SHELF_WIDTH
 	}
-	frame := ns.Rect{
-		origin = {x, available.origin.y + (available.size.height - height) / 2},
-		size = {width, height},
+	x := available.origin.x + (available.size.width - width) / 2
+	y := available.origin.y + (available.size.height - height) / 2
+	switch settings.edge {
+	case .Left: x = available.origin.x + 8
+	case .Right: x = available.origin.x + available.size.width - width - 8
+	case .Bottom: y = available.origin.y + 8
+	case .Top: y = available.origin.y + available.size.height - height - 8
 	}
+	frame := ns.Rect{origin = {x, y}, size = {width, height}}
 	if frame != send_rect(window, "frame") {
 		notify(window, "setFrame:display:", frame, ns.BOOL(true))
 	}
@@ -196,8 +202,10 @@ main :: proc() {
 			next_refresh = rl.GetTime() + 0.25
 		}
 
-		height := rl.GetScreenHeight()
-		max_scroll := f32(max(0, len(apps) * ROW_HEIGHT + 2 * PADDING - int(height)))
+		width, height := rl.GetScreenWidth(), rl.GetScreenHeight()
+		horizontal := settings.edge == .Top || settings.edge == .Bottom
+		viewport := horizontal ? width : height
+		max_scroll := f32(max(0, len(apps) * ROW_HEIGHT + 2 * PADDING - int(viewport)))
 		scroll = clamp(scroll - rl.GetMouseWheelMove() * ROW_HEIGHT, 0, max_scroll)
 		mouse := rl.GetMousePosition()
 		open_settings := false
@@ -212,18 +220,22 @@ main :: proc() {
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.BLANK)
-		shelf_rect := rl.Rectangle{0, 0, SHELF_WIDTH, f32(height)}
+		shelf_rect := rl.Rectangle{0, 0, f32(width), f32(height)}
 		roundness := min(1, 2 * f32(settings.corner_radius) / min(shelf_rect.width, shelf_rect.height))
 		rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
 		hovered: App
-		tooltip_center_y: f32
+		tooltip_center: rl.Vector2
 		for app, index in apps {
-			y := f32(PADDING + index * ROW_HEIGHT) - scroll
-			row := rl.Rectangle{8, y, SHELF_WIDTH - 16, ROW_HEIGHT - 4}
+			offset := f32(PADDING + index * ROW_HEIGHT) - scroll
+			row := rl.Rectangle{8, offset, SHELF_WIDTH - 16, ROW_HEIGHT - 4}
+			if horizontal {
+				row = {offset, 8, ROW_HEIGHT - 4, SHELF_WIDTH - 16}
+			}
+			center := rl.Vector2{row.x + row.width / 2, row.y + row.height / 2}
 			hover := !context_click && rl.IsCursorOnScreen() && rl.CheckCollisionPointRec(mouse, row)
 			if hover {
 				hovered = app
-				tooltip_center_y = row.y + row.height / 2
+				tooltip_center = center
 			}
 			if hover || app.pid == active_pid {
 				rl.DrawRectangleRounded(row, 0.24, 8, {63, 63, 69, 255})
@@ -231,9 +243,9 @@ main :: proc() {
 			if app.icon.id != 0 {
 				source := rl.Rectangle{0, 0, f32(app.icon.width), f32(app.icon.height)}
 				size := f32(settings.icon_size)
-				rl.DrawTexturePro(app.icon, source, {(SHELF_WIDTH - size) / 2, y + (row.height - size) / 2, size, size}, {}, 0, rl.WHITE)
+				rl.DrawTexturePro(app.icon, source, {center.x - size / 2, center.y - size / 2, size, size}, {}, 0, rl.WHITE)
 			} else {
-				rl.DrawCircle(34, i32(y) + 24, 10, rl.GRAY)
+				rl.DrawCircle(i32(center.x), i32(center.y), 10, rl.GRAY)
 			}
 			if hover && rl.IsMouseButtonReleased(.LEFT) {
 				target := send(^ns.Object, native_class("NSRunningApplication"), "runningApplicationWithProcessIdentifier:", app.pid)
@@ -246,7 +258,7 @@ main :: proc() {
 		}
 		rl.EndDrawing()
 		if hovered.name != "" && rl.GetTime() - hover_started >= 0.45 && !open_settings {
-			show_tooltip(&tooltip, window, hovered, tooltip_center_y, settings.right_edge)
+			show_tooltip(&tooltip, window, hovered, tooltip_center, settings.edge)
 		} else {
 			hide_tooltip(&tooltip)
 		}

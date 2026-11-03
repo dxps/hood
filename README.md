@@ -2,8 +2,7 @@
 
 A macOS shelf for switching between running apps, written in Odin and rendered
 with Raylib. Odin calls macOS APIs for app discovery, icons, and activation. This is
-a modified version of Karl Zylinski's Odin + Raylib + Hot Reload template.
-See LICENSE for the original license notice.
+based on Karl Zylinski's Odin + Raylib + Hot Reload [template](https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template).
 
 ## Development
 
@@ -36,7 +35,7 @@ of the build machine and applies an ad hoc signature for local use.
 
 Right-click anywhere on the shelf, including an app icon, and choose **Settings**.
 Settings opens in a separate window while the shelf stays visible.
-Choose the left or right screen edge and set the icon size from 24 to 48 pixels.
+Choose the left, right, bottom, or top screen edge and set the icon size from 24 to 48 pixels.
 Changes apply while Settings is open and are saved automatically to
 `~/.config/hood/hood.toml`. Hood loads the file at startup.
 

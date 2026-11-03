@@ -22,7 +22,7 @@ hide_tooltip :: proc(tooltip: ^Tooltip) {
 	}
 }
 
-show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center_y: f32, right_edge: bool) {
+show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.Vector2, edge: Shelf_Edge) {
 	size :: 14
 	height :: 26
 	gap :: 6
@@ -34,7 +34,10 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center_y: f
 	}
 	available := send_rect(screen, "visibleFrame")
 	shelf_frame := send_rect(shelf, "frame")
-	max_width := available.size.width - shelf_frame.size.width - 2 * gap - 8
+	max_width := available.size.width
+	if edge == .Left || edge == .Right {
+		max_width -= shelf_frame.size.width + 2 * gap + 8
+	}
 	if max_width < 32 {
 		hide_tooltip(tooltip)
 		return
@@ -45,11 +48,11 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center_y: f
 	defer free_all(context.temp_allocator)
 
 	label := fmt.ctprintf("%s", app.name)
-	if ns.Float(text_width(label, size)) + 16 > max_width {
+	if ns.Float(text_width(label, size)) + 17 > max_width {
 		label = "..."
 		for _, offset in app.name {
 			candidate := fmt.ctprintf("%s...", app.name[:offset])
-			if ns.Float(text_width(candidate, size)) + 16 > max_width {
+			if ns.Float(text_width(candidate, size)) + 17 > max_width {
 				break
 			}
 			label = candidate
@@ -57,13 +60,20 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center_y: f
 	}
 	width := i32(text_width(label, size) + 17)
 	x := shelf_frame.origin.x + shelf_frame.size.width + gap
-	if right_edge {
+	y := shelf_frame.origin.y + shelf_frame.size.height - ns.Float(center.y) - height / 2
+	switch edge {
+	case .Left:
+	case .Right:
 		x = shelf_frame.origin.x - ns.Float(width) - gap
+	case .Bottom, .Top:
+		x = clamp(shelf_frame.origin.x + ns.Float(center.x) - ns.Float(width) / 2,
+			available.origin.x, available.origin.x + available.size.width - ns.Float(width))
+		y = shelf_frame.origin.y + shelf_frame.size.height + gap
+		if edge == .Top {
+			y = shelf_frame.origin.y - height - gap
+		}
 	}
-	frame := ns.Rect{
-		origin = {x, shelf_frame.origin.y + shelf_frame.size.height - ns.Float(center_y) - height / 2},
-		size = {ns.Float(width), height},
-	}
+	frame := ns.Rect{origin = {x, y}, size = {ns.Float(width), height}}
 
 	if tooltip.window == nil {
 		tooltip.window = send(^ns.Object, native_class("NSWindow"), "new")
