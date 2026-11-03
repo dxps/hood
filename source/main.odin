@@ -18,13 +18,24 @@ shelf_layout :: proc(settings: Settings, count: int) -> Shelf_Layout {
 	across := horizontal ? settings.vertical_margin : settings.horizontal_margin
 	step := settings.icon_size + settings.icon_gap
 	length := 2 * along + settings.icon_size + i32(max(0, count - 1)) * step
-	return {horizontal, length, settings.icon_size + 2 * across, along, step}
+	start := along
+	thickness := settings.icon_size + 2 * across
+	if settings.magnification_percent > 0 {
+		grown := (settings.icon_size * (100 + settings.magnification_percent) + 99) / 100
+		thickness = max(thickness, grown)
+		if length < grown {
+			start += (grown - length) / 2
+			length = grown
+		}
+	}
+	return {horizontal, length, thickness, start, step}
 }
 
 App :: struct {
 	pid: i32,
 	name: string,
 	icon: rl.Texture2D,
+	hover_scale: f32,
 }
 
 native_class :: proc(name: cstring) -> ^ns.Object {
@@ -75,11 +86,13 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
 		}
 		pid := send(i32, app, "processIdentifier")
 		icon: rl.Texture2D
+		hover_scale: f32
 		name: string
 		cached := false
 		for &previous in apps^ {
 			if previous.pid == pid {
 				icon = previous.icon
+				hover_scale = previous.hover_scale
 				name = previous.name
 				previous.name = ""
 				previous.icon = {}
@@ -92,7 +105,7 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
 			label := send(cstring, send(^ns.Object, app, "localizedName"), "UTF8String")
 			name = strings.clone(string(label))
 		}
-		append(&next, App{pid, name, icon})
+		append(&next, App{pid, name, icon, hover_scale})
 	}
 	free_apps(apps^)
 	apps^ = next
@@ -127,11 +140,12 @@ shelf_frames :: proc(window: ^ns.Object, rows: int, settings: Settings) -> (rest
 	}
 	x := available.origin.x + (available.size.width - width) / 2
 	y := available.origin.y + (available.size.height - height) / 2
+	gap := ns.Float(settings.screen_edge_gap)
 	switch settings.edge {
-	case .Left: x = available.origin.x + 8
-	case .Right: x = available.origin.x + available.size.width - width - 8
-	case .Bottom: y = available.origin.y + 8
-	case .Top: y = available.origin.y + available.size.height - height - 8
+	case .Left: x = available.origin.x + gap
+	case .Right: x = available.origin.x + available.size.width - width - gap
+	case .Bottom: y = available.origin.y + gap
+	case .Top: y = available.origin.y + available.size.height - height - gap
 	}
 	resting = ns.Rect{origin = {x, y}, size = {width, height}}
 	display = send_rect((^ns.Object)(screen), "frame")
@@ -188,7 +202,7 @@ run_shelf :: proc() {
 	}
 	active_pid: i32
 	next_refresh, next_app_refresh: f64
-	visibility := Shelf_Visibility{progress = 1}
+	visibility := Shelf_Visibility{progress = 1, requested = true, showing = true}
 	scroll: f32
 	settings_process: os.Process
 	defer {
@@ -227,7 +241,7 @@ run_shelf :: proc() {
 		}
 
 		was_hidden := visibility.hidden
-		interactive := update_shelf_visibility(window, &visibility, settings)
+		interactive := update_shelf_visibility(window, &visibility, settings, keep_visible = settings_process.pid != 0)
 		if visibility.hidden {
 			hide_tooltip(&tooltip)
 			hovered_pid = 0

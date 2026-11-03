@@ -10,10 +10,10 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-Settings_Dropdown :: enum { None, Show, Animation, Position, Tooltip_Delay }
+Settings_Dropdown :: enum { None, Show, Animation, Show_Hide_Delay, Position, Tooltip_Delay, Hover_Magnification, Hover_Animation }
 
 settings_height :: proc(settings: Settings) -> i32 {
-	return 608 if settings.auto_hide else 558
+	return 688 + (90 if settings.auto_hide else 0)
 }
 
 Shelf_Frame :: struct {

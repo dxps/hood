@@ -8,6 +8,8 @@ Shelf_Visibility :: struct {
 	progress: f64,
 	approaching: bool,
 	hidden: bool,
+	requested, showing: bool,
+	request_started: f64,
 }
 
 contains_point :: proc(rect: ns.Rect, point: ns.Point) -> bool {
@@ -39,22 +41,34 @@ reveal_area :: proc(resting, display: ns.Rect, edge: Shelf_Edge) -> (trigger, co
 	return
 }
 
-update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, settings: Settings) -> bool {
+delayed_visibility :: proc(state: ^Shelf_Visibility, requested: bool, now: f64, delay_ms: i32) -> bool {
+	if requested != state.requested {
+		state.requested = requested
+		state.request_started = now
+	}
+	if now - state.request_started >= f64(delay_ms) / 1000 {
+		state.showing = requested
+	}
+	return state.showing
+}
+
+update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, settings: Settings, keep_visible: bool) -> bool {
 	if state.resting.size.width <= 0 || state.resting.size.height <= 0 {
 		return false
 	}
 
 	show := true
-	if settings.auto_hide {
+	if settings.auto_hide && !keep_visible {
 		mouse := send(ns.Point, native_class("NSEvent"), "mouseLocation")
 		trigger, corridor := reveal_area(state.resting, state.display, settings.edge)
 		inside := contains_point(state.resting, mouse)
-		if inside || !contains_point(corridor, mouse) {
-			state.approaching = false
-		} else if contains_point(trigger, mouse) {
+		if contains_point(trigger, mouse) {
 			state.approaching = true
+		} else if (inside && !state.hidden) || !contains_point(corridor, mouse) {
+			state.approaching = false
 		}
-		show = state.approaching || (inside && !state.hidden)
+		requested := state.approaching || (inside && !state.hidden)
+		show = delayed_visibility(state, requested, rl.GetTime(), settings.show_hide_delay_ms)
 		if settings.animation_tenths == 0 {
 			state.progress = 1 if show else 0
 		} else {
@@ -63,6 +77,8 @@ update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, se
 		}
 	} else {
 		state.approaching = false
+		state.requested = true
+		state.showing = true
 		state.progress = 1
 	}
 

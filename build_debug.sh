@@ -2,7 +2,8 @@
 set -eu
 cd "$(dirname "$0")"
 
-out=build/debug
+output=${2:-build/debug/hood}
+out=$(dirname "$output")
 mkdir -p "$out"
 staging=$(mktemp -d "$out/.build.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
@@ -11,4 +12,4 @@ if [[ ${1:-} == "--live-ui" ]]; then
     flags=(-define:HOOD_LIVE_UI=true -define:RAYLIB_SHARED=true)
 fi
 odin build source ${flags[@]+"${flags[@]}"} -out:"$staging/hood" -strict-style -vet -debug
-mv "$staging/hood" "$out/hood"
+mv "$staging/hood" "$output"

@@ -8,13 +8,20 @@ import ns "core:sys/darwin/Foundation"
 import "core:sys/posix"
 import rl "vendor:raylib"
 
-SETTINGS_WIDTH :: 400
+SETTINGS_WIDTH :: 480
 
 MIN_ICON_SIZE :: 24
 MAX_ICON_SIZE :: 48
 MAX_CORNER_RADIUS :: 24
+MAX_SCREEN_EDGE_GAP :: 20
+MAX_MAGNIFICATION_ANIMATION_TENTHS :: 5
+MAX_SHOW_ANIMATION_TENTHS :: 5
 MAX_ICON_SPACING :: 48
 
+
+MAGNIFICATION_PERCENTS := [12]i32{0, 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80}
+
+SHOW_HIDE_DELAYS_MS := [5]i32{0, 50, 100, 200, 300}
 
 TOOLTIP_DELAYS_MS := [6]i32{0, 100, 250, 450, 750, 1000}
 
@@ -24,8 +31,11 @@ DEFAULT_SETTINGS :: Settings {
 	icon_gap = 20,
 	horizontal_margin = 18,
 	vertical_margin = 14,
+	screen_edge_gap = 8,
 	animation_tenths = 3,
-	tooltip_delay_ms = 450,
+	tooltip_delay_ms = 100,
+	magnification_percent = 60,
+	hover_animation_tenths = 3,
 }
 
 Shelf_Edge :: enum { Left, Right, Bottom, Top }
@@ -38,9 +48,13 @@ Settings :: struct {
 	corner_radius:  i32,
 	background_rgb: u32,
 	icon_gap, horizontal_margin, vertical_margin: i32,
+	screen_edge_gap: i32,
+	show_hide_delay_ms: i32,
 	auto_hide: bool,
 	animation_tenths: i32,
 	tooltip_delay_ms: i32,
+	magnification_percent: i32,
+	hover_animation_tenths: i32,
 }
 
 load_settings :: proc(path: string) -> Settings {
@@ -72,6 +86,41 @@ load_settings :: proc(path: string) -> Settings {
 			if value == "true" || value == "false" {
 				settings.auto_hide = value == "true"
 			}
+		case "hover_magnification":
+			// Read the previous on/off setting from existing configs.
+			if value == "false" {
+				settings.magnification_percent = 0
+			}
+		case "magnification_percent":
+			percent, valid := strconv.parse_int(value)
+			if valid {
+				for option in MAGNIFICATION_PERCENTS {
+					if percent == int(option) {
+						settings.magnification_percent = option
+						break
+					}
+				}
+			}
+		case "hover_animation_tenths":
+			duration, valid := strconv.parse_int(value)
+			if valid && duration >= 0 && duration <= 10 {
+				settings.hover_animation_tenths = i32(clamp(duration, 1, MAX_MAGNIFICATION_ANIMATION_TENTHS))
+			}
+		case "show_hide_delay_ms":
+			delay, valid := strconv.parse_int(value)
+			if valid {
+				for option in SHOW_HIDE_DELAYS_MS {
+					if delay == int(option) {
+						settings.show_hide_delay_ms = option
+						break
+					}
+				}
+			}
+		case "screen_edge_gap":
+			gap, valid := strconv.parse_int(value)
+			if valid && gap >= 0 && gap <= MAX_SCREEN_EDGE_GAP {
+				settings.screen_edge_gap = i32(gap)
+			}
 		case "tooltip_delay_ms":
 			delay, valid := strconv.parse_int(value)
 			if valid {
@@ -85,7 +134,7 @@ load_settings :: proc(path: string) -> Settings {
 		case "animation_tenths":
 			duration, valid := strconv.parse_int(value)
 			if valid && duration >= 0 && duration <= 10 {
-				settings.animation_tenths = i32(duration)
+				settings.animation_tenths = i32(min(duration, MAX_SHOW_ANIMATION_TENTHS))
 			}
 		case "edge":
 			for edge in Shelf_Edge {
@@ -139,7 +188,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\n",
+		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
 		edge,
 		settings.icon_size,
 		settings.corner_radius,
@@ -150,6 +199,10 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 		settings.auto_hide,
 		settings.animation_tenths,
 		settings.tooltip_delay_ms,
+		settings.magnification_percent,
+		settings.hover_animation_tenths,
+		settings.show_hide_delay_ms,
+		settings.screen_edge_gap,
 	)
 	_, err := os.write(file, transmute([]byte)text)
 	close_err := os.close(file)
@@ -217,7 +270,7 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 				draft = previous
 			}
 		}
-		if draft.auto_hide != previous.auto_hide {
+		if settings_height(draft) != settings_height(previous) {
 			rl.SetWindowSize(SETTINGS_WIDTH, settings_height(draft))
 		}
 		if done {

@@ -5,6 +5,8 @@ cd "$(dirname "$0")"
 mkdir -p build/debug
 session=$(mktemp -d "$PWD/build/debug/.live.XXXXXX")
 export HOOD_UI_MANIFEST="$session/current"
+# Settings launches this same executable. Keep it separate from standalone builds.
+executable="$session/hood"
 app_pid=
 stop_app() {
     if [[ -n "$app_pid" ]]; then
@@ -38,10 +40,10 @@ while true; do
         previous_host=$current_host
         previous_ui=$current_ui
         host_built=false
-        if ./build_debug.sh --live-ui; then
+        if ./build_debug.sh --live-ui "$executable"; then
             stop_app
             rm -f "$HOOD_UI_MANIFEST"
-            ./build/debug/hood &
+            "$executable" &
             app_pid=$!
             host_built=true
         fi
