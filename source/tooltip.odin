@@ -45,7 +45,6 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.
 
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
-	defer free_all(context.temp_allocator)
 
 	label := fmt.ctprintf("%s", app.name)
 	if ns.Float(text_width(label, size)) + 17 > max_width {

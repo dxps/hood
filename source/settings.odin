@@ -265,6 +265,10 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	picker_active := false
 	picker_rgb := draft.background_rgb
 	for !rl.WindowShouldClose() && posix.getppid() != 1 {
+		frame_pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
+		defer notify(frame_pool, "drain")
+		defer free_all(context.temp_allocator)
+
 		previous := draft
 		if picker_active {
 			if rgb, ok := color_panel_rgb(color_panel); ok && rgb != picker_rgb {
@@ -307,6 +311,5 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 			notify(color_panel, "makeKeyAndOrderFront:", (^ns.Object)(nil))
 			picker_active = true
 		}
-		free_all(context.temp_allocator)
 	}
 }

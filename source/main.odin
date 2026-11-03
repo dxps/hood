@@ -51,32 +51,6 @@ cocoa_window :: proc() -> ^ns.Object {
 	return window
 }
 
-load_icon :: proc(app: ^ns.Object) -> rl.Texture2D {
-	icon := send(^ns.Object, app, "icon")
-	tiff := send(^ns.Object, icon, "TIFFRepresentation")
-	if tiff == nil {
-		return {}
-	}
-	bitmap := send(^ns.Object, native_class("NSBitmapImageRep"), "imageRepWithData:", tiff)
-	// NSBitmapImageFileTypePNG
-	png := send(
-		^ns.Object,
-		bitmap,
-		"representationUsingType:properties:",
-		uint(4),
-		send(^ns.Object, native_class("NSDictionary"), "dictionary"),
-	)
-	if png == nil {
-		return {}
-	}
-	image := rl.LoadImageFromMemory(".png", send(rawptr, png, "bytes"), i32(send(uint, png, "length")))
-	if image.data == nil {
-		return {}
-	}
-	defer rl.UnloadImage(image)
-	return rl.LoadTextureFromImage(image)
-}
-
 refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
@@ -234,6 +208,11 @@ run_shelf :: proc() {
 	hover_started: f64
 	startup_visible_until := rl.GetTime() + 2
 	for !rl.WindowShouldClose() {
+		// Raylib pumps Cocoa events on this thread, outside AppKit's usual run loop.
+		frame_pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
+		defer notify(frame_pool, "drain")
+		defer free_all(context.temp_allocator)
+
 		now := rl.GetTime()
 		if now >= next_app_refresh {
 			active_pid = refresh_apps(workspace, &apps)
@@ -257,7 +236,12 @@ run_shelf :: proc() {
 		}
 
 		was_hidden := visibility.hidden
-		interactive := update_shelf_visibility(window, &visibility, settings, keep_visible = now < startup_visible_until || settings_process.pid != 0)
+		interactive := update_shelf_visibility(
+			window,
+			&visibility,
+			settings,
+			keep_visible = now < startup_visible_until || settings_process.pid != 0,
+		)
 		if visibility.hidden {
 			hide_tooltip(&tooltip)
 			hovered_pid = 0
