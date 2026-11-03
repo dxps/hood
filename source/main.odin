@@ -265,7 +265,7 @@ run_shelf :: proc() {
 			hovered_pid = hovered.pid
 			hover_started = rl.GetTime()
 		}
-		if hovered.name != "" && rl.GetTime() - hover_started >= 0.45 && !open_settings {
+		if hovered.name != "" && rl.GetTime() - hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {
 			show_tooltip(&tooltip, window, hovered, result.tooltip_center, settings.edge)
 		} else {
 			hide_tooltip(&tooltip)

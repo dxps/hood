@@ -218,10 +218,21 @@ settings_view :: proc(
 	}
 	draw_text("Position", 20, 28 + offset, 16, theme.text)
 	dropdown_button(theme, dropdown, .Position, 20 + offset, EDGE_LABELS[draft.edge])
+	tooltip_labels := [6]cstring{"Immediate", "100 ms", "250 ms", "450 ms", "750 ms", "1 second"}
+	tooltip_choice := 0
+	for delay, index in TOOLTIP_DELAYS_MS {
+		if draft.tooltip_delay_ms == delay {
+			tooltip_choice = index
+			break
+		}
+	}
+	draw_text("Tooltip delay", 20, 78 + offset, 16, theme.text)
+	dropdown_button(theme, dropdown, .Tooltip_Delay, 70 + offset, tooltip_labels[tooltip_choice])
+	controls_offset := offset + 50
 	stepper_row(
 		theme,
 		"Icon size",
-		70 + offset,
+		70 + controls_offset,
 		&draft.icon_size,
 		MIN_ICON_SIZE,
 		MAX_ICON_SIZE,
@@ -231,7 +242,7 @@ settings_view :: proc(
 	stepper_row(
 		theme,
 		"Corner radius",
-		120 + offset,
+		120 + controls_offset,
 		&draft.corner_radius,
 		0,
 		MAX_CORNER_RADIUS,
@@ -239,28 +250,28 @@ settings_view :: proc(
 		!was_open,
 	)
 
-	draw_text("Background color", 20, 175 + offset, 16, theme.text)
+	draw_text("Background color", 20, 175 + controls_offset, 16, theme.text)
 	draw_text(
 		fmt.ctprintf("#%06X", draft.background_rgb),
 		SETTINGS_CONTROL_LEFT,
-		175 + offset,
+		175 + controls_offset,
 		16,
 		theme.text,
 	)
 	pick_color =
 		ui_button(
 			theme,
-			{SETTINGS_CONTROL_RIGHT - 74, f32(168 + offset), 74, 30},
+			{SETTINGS_CONTROL_RIGHT - 74, f32(168 + controls_offset), 74, 30},
 			"Choose",
 			font_size = 13,
 		) &&
 		!was_open
-	rl.DrawLine(20, 210 + offset, SETTINGS_CONTROL_RIGHT, 210 + offset, theme.popup_border)
-	draw_text("Spacing", 20, 224 + offset, 20, theme.text)
+	rl.DrawLine(20, 210 + controls_offset, SETTINGS_CONTROL_RIGHT, 210 + controls_offset, theme.popup_border)
+	draw_text("Spacing", 20, 224 + controls_offset, 20, theme.text)
 	stepper_row(
 		theme,
 		"Between icons",
-		256 + offset,
+		256 + controls_offset,
 		&draft.icon_gap,
 		0,
 		MAX_ICON_SPACING,
@@ -270,7 +281,7 @@ settings_view :: proc(
 	stepper_row(
 		theme,
 		"Left / right margins",
-		300 + offset,
+		300 + controls_offset,
 		&draft.horizontal_margin,
 		0,
 		MAX_ICON_SPACING,
@@ -280,7 +291,7 @@ settings_view :: proc(
 	stepper_row(
 		theme,
 		"Top / bottom margins",
-		344 + offset,
+		344 + controls_offset,
 		&draft.vertical_margin,
 		0,
 		MAX_ICON_SPACING,
@@ -288,10 +299,10 @@ settings_view :: proc(
 		!was_open,
 	)
 	if failed {
-		draw_text("Could not save hood.toml", 20, 390 + offset, 16, theme.error)
+		draw_text("Could not save hood.toml", 20, 390 + controls_offset, 16, theme.error)
 	}
 	done =
-		ui_button(theme, {SETTINGS_CONTROL_RIGHT - 74, f32(406 + offset), 74, 32}, "OK") &&
+		ui_button(theme, {SETTINGS_CONTROL_RIGHT - 74, f32(406 + controls_offset), 74, 32}, "OK") &&
 		!was_open
 	if dropdown^ != .None {
 		switch dropdown^ {
@@ -311,6 +322,11 @@ settings_view :: proc(
 				extra_width = 32,
 			); choice >= 0 {
 				draft.animation_tenths = i32(choice)
+			}
+		case .Tooltip_Delay:
+			if choice := dropdown_popup(theme, 106 + offset, tooltip_labels[:], tooltip_choice, was_open);
+			   choice >= 0 {
+				draft.tooltip_delay_ms = TOOLTIP_DELAYS_MS[choice]
 			}
 		case .Position:
 			position_labels := [4]cstring{"Left", "Right", "Bottom", "Top"}
@@ -342,7 +358,11 @@ draw_shelf :: proc(
 	result: Shelf_Frame,
 ) {
 	layout := shelf_layout(settings, len(apps))
-	mouse := rl.GetMousePosition()
+	// Cocoa can report the pointer over a newly revealed window before GLFW
+	// receives a cursor-enter or motion event.
+	pointer := send(ns.Point, cocoa_window(), "mouseLocationOutsideOfEventStream")
+	mouse := rl.Vector2{f32(pointer.x), f32(height) - f32(pointer.y)}
+	pointer_inside := mouse.x >= 0 && mouse.x < f32(width) && mouse.y >= 0 && mouse.y < f32(height)
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.BLANK)
 	shelf_rect := rl.Rectangle{0, 0, f32(width), f32(height)}
@@ -371,7 +391,7 @@ draw_shelf :: proc(
 			size + 2 * x_padding,
 			size + 2 * y_padding,
 		}
-		hover := !context_click && rl.IsCursorOnScreen() && rl.CheckCollisionPointRec(mouse, row)
+		hover := !context_click && pointer_inside && rl.CheckCollisionPointRec(mouse, row)
 		if hover {
 			result.hovered = app
 			result.tooltip_center = center

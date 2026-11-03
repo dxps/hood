@@ -16,6 +16,8 @@ MAX_CORNER_RADIUS :: 24
 MAX_ICON_SPACING :: 48
 
 
+TOOLTIP_DELAYS_MS := [6]i32{0, 100, 250, 450, 750, 1000}
+
 DEFAULT_SETTINGS :: Settings {
 	icon_size      = 32,
 	background_rgb = 0x1D1D20,
@@ -23,6 +25,7 @@ DEFAULT_SETTINGS :: Settings {
 	horizontal_margin = 18,
 	vertical_margin = 14,
 	animation_tenths = 3,
+	tooltip_delay_ms = 450,
 }
 
 Shelf_Edge :: enum { Left, Right, Bottom, Top }
@@ -37,6 +40,7 @@ Settings :: struct {
 	icon_gap, horizontal_margin, vertical_margin: i32,
 	auto_hide: bool,
 	animation_tenths: i32,
+	tooltip_delay_ms: i32,
 }
 
 load_settings :: proc(path: string) -> Settings {
@@ -67,6 +71,16 @@ load_settings :: proc(path: string) -> Settings {
 		case "auto_hide":
 			if value == "true" || value == "false" {
 				settings.auto_hide = value == "true"
+			}
+		case "tooltip_delay_ms":
+			delay, valid := strconv.parse_int(value)
+			if valid {
+				for option in TOOLTIP_DELAYS_MS {
+					if delay == int(option) {
+						settings.tooltip_delay_ms = option
+						break
+					}
+				}
 			}
 		case "animation_tenths":
 			duration, valid := strconv.parse_int(value)
@@ -125,7 +139,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\n",
+		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\n",
 		edge,
 		settings.icon_size,
 		settings.corner_radius,
@@ -135,6 +149,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 		settings.vertical_margin,
 		settings.auto_hide,
 		settings.animation_tenths,
+		settings.tooltip_delay_ms,
 	)
 	_, err := os.write(file, transmute([]byte)text)
 	close_err := os.close(file)
