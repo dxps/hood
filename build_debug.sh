@@ -6,5 +6,9 @@ out=build/debug
 mkdir -p "$out"
 staging=$(mktemp -d "$out/.build.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
-odin build source -out:"$staging/hood" -strict-style -vet -debug
+flags=()
+if [[ ${1:-} == "--live-ui" ]]; then
+    flags=(-define:HOOD_LIVE_UI=true -define:RAYLIB_SHARED=true)
+fi
+odin build source ${flags[@]+"${flags[@]}"} -out:"$staging/hood" -strict-style -vet -debug
 mv "$staging/hood" "$out/hood"

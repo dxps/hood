@@ -128,7 +128,13 @@ position_shelf :: proc(window: ^ns.Object, rows: int, settings: Settings) {
 	}
 }
 
-main :: proc() {
+when !#config(HOOD_UI_MODULE, false) {
+	main :: proc() {
+		run_shelf()
+	}
+}
+
+run_shelf :: proc() {
 	home, home_err := os.user_home_dir(context.allocator)
 	config_dir, config_path: string
 	settings := DEFAULT_SETTINGS
@@ -179,6 +185,8 @@ main :: proc() {
 			_, _ = os.process_wait(settings_process)
 		}
 	}
+	ui: Live_UI
+	defer close_live_ui(&ui)
 	tooltip: Tooltip
 	defer close_tooltip(&tooltip)
 	hovered_pid: i32
@@ -207,7 +215,6 @@ main :: proc() {
 		viewport := horizontal ? width : height
 		max_scroll := f32(max(0, len(apps) * ROW_HEIGHT + 2 * PADDING - int(viewport)))
 		scroll = clamp(scroll - rl.GetMouseWheelMove() * ROW_HEIGHT, 0, max_scroll)
-		mouse := rl.GetMousePosition()
 		open_settings := false
 		context_click := rl.IsMouseButtonReleased(.RIGHT)
 		if context_click {
@@ -218,47 +225,19 @@ main :: proc() {
 			break
 		}
 
-		rl.BeginDrawing()
-		rl.ClearBackground(rl.BLANK)
-		shelf_rect := rl.Rectangle{0, 0, f32(width), f32(height)}
-		roundness := min(1, 2 * f32(settings.corner_radius) / min(shelf_rect.width, shelf_rect.height))
-		rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
-		hovered: App
-		tooltip_center: rl.Vector2
-		for app, index in apps {
-			offset := f32(PADDING + index * ROW_HEIGHT) - scroll
-			row := rl.Rectangle{8, offset, SHELF_WIDTH - 16, ROW_HEIGHT - 4}
-			if horizontal {
-				row = {offset, 8, ROW_HEIGHT - 4, SHELF_WIDTH - 16}
-			}
-			center := rl.Vector2{row.x + row.width / 2, row.y + row.height / 2}
-			hover := !context_click && rl.IsCursorOnScreen() && rl.CheckCollisionPointRec(mouse, row)
-			if hover {
-				hovered = app
-				tooltip_center = center
-			}
-			if hover || app.pid == active_pid {
-				rl.DrawRectangleRounded(row, 0.24, 8, {63, 63, 69, 255})
-			}
-			if app.icon.id != 0 {
-				source := rl.Rectangle{0, 0, f32(app.icon.width), f32(app.icon.height)}
-				size := f32(settings.icon_size)
-				rl.DrawTexturePro(app.icon, source, {center.x - size / 2, center.y - size / 2, size, size}, {}, 0, rl.WHITE)
-			} else {
-				rl.DrawCircle(i32(center.x), i32(center.y), 10, rl.GRAY)
-			}
-			if hover && rl.IsMouseButtonReleased(.LEFT) {
-				target := send(^ns.Object, native_class("NSRunningApplication"), "runningApplicationWithProcessIdentifier:", app.pid)
-				send(ns.BOOL, target, "activateWithOptions:", uint(0))
-			}
+		result := ui_shelf(&ui, apps[:], settings, width, height, scroll, active_pid, context_click)
+		if result.clicked_pid != 0 {
+			target := send(^ns.Object, native_class("NSRunningApplication"),
+				"runningApplicationWithProcessIdentifier:", result.clicked_pid)
+			send(ns.BOOL, target, "activateWithOptions:", uint(0))
 		}
+		hovered := result.hovered
 		if hovered.pid != hovered_pid {
 			hovered_pid = hovered.pid
 			hover_started = rl.GetTime()
 		}
-		rl.EndDrawing()
 		if hovered.name != "" && rl.GetTime() - hover_started >= 0.45 && !open_settings {
-			show_tooltip(&tooltip, window, hovered, tooltip_center, settings.edge)
+			show_tooltip(&tooltip, window, hovered, result.tooltip_center, settings.edge)
 		} else {
 			hide_tooltip(&tooltip)
 		}

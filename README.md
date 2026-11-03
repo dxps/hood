@@ -12,9 +12,14 @@ With Odin on your PATH and the Xcode Command Line Tools installed, run:
 ./dev.sh
 ```
 
-The watcher builds and launches Hood, then checks for Odin source changes
-once a second. Each successful rebuild restarts the app. If compilation fails,
-the last working instance stays open. Press Ctrl+C to stop the watcher and app.
+The watcher checks for changes once a second. Edit `source/ui.odin` to reload
+shelf drawing and the Settings UI in their existing windows. Edits to the host,
+configuration code, native integration, or font rebuild and restart Hood.
+A failed build leaves the last working version running. Press Ctrl+C to stop
+the watcher and app.
+
+Live reload uses the shared macOS Raylib library supplied by the Odin toolchain.
+The standalone debug and release builds use the statically linked Raylib library.
 
 Run `./build_debug.sh` to compile a debug executable without starting the watcher.
 
