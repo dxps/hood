@@ -3,6 +3,7 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:time"
 import ns "core:sys/darwin/Foundation"
 import rl "vendor:raylib"
 
@@ -186,7 +187,7 @@ run_shelf :: proc() {
 		free_apps(apps)
 	}
 	active_pid: i32
-	next_refresh: f64
+	next_refresh, next_app_refresh: f64
 	visibility := Shelf_Visibility{progress = 1}
 	scroll: f32
 	settings_process: os.Process
@@ -203,8 +204,12 @@ run_shelf :: proc() {
 	hovered_pid: i32
 	hover_started: f64
 	for !rl.WindowShouldClose() {
-		if rl.GetTime() >= next_refresh {
+		now := rl.GetTime()
+		if now >= next_app_refresh {
 			active_pid = refresh_apps(workspace, &apps)
+			next_app_refresh = now + (1.0 if visibility.hidden else 0.25)
+		}
+		if now >= next_refresh {
 			if settings_process.pid != 0 {
 				if config_path != "" {
 					settings = load_settings(config_path)
@@ -218,10 +223,22 @@ run_shelf :: proc() {
 				}
 			}
 			visibility.resting, visibility.display = shelf_frames(window, len(apps), settings)
-			next_refresh = rl.GetTime() + 0.25
+			next_refresh = now + 0.25
 		}
 
+		was_hidden := visibility.hidden
 		interactive := update_shelf_visibility(window, &visibility, settings)
+		if visibility.hidden {
+			hide_tooltip(&tooltip)
+			hovered_pid = 0
+			// Keep Cocoa responsive and check the reveal edge without drawing or swapping buffers.
+			rl.PollInputEvents()
+			time.sleep(40 * time.Millisecond)
+			continue
+		}
+		if was_hidden {
+			next_app_refresh = 0
+		}
 		width, height := rl.GetScreenWidth(), rl.GetScreenHeight()
 		layout := shelf_layout(settings, len(apps))
 		viewport := layout.horizontal ? width : height
