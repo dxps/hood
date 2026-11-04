@@ -70,6 +70,14 @@ application_has_visible_window :: proc(pid: i32) -> bool {
 		return true
 	}
 	defer cf.Release(cast(cf.TypeRef)windows)
+	return application_has_window(windows, pid)
+}
+
+application_has_window :: proc(windows: cf.ArrayRef, pid: i32) -> bool {
+	// Keep apps available if the system cannot provide a window snapshot.
+	if windows == nil {
+		return true
+	}
 	for index in 0 ..< cf.ArrayGetCount(windows) {
 		info := cast(cf.DictionaryRef)cf.ArrayGetValueAtIndex(windows, index)
 		owner_value := cast(cf.NumberRef)cf.DictionaryGetValue(info, cg.WindowOwnerPID)
@@ -139,6 +147,11 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned, app_ord
 	defer notify(pool, "drain")
 
 	running := send(^ns.Object, workspace, "runningApplications")
+	// Include minimized windows and windows on other Spaces, not just on-screen ones.
+	windows := cg.WindowListCopyWindowInfo(.All, 0)
+	defer if windows != nil {
+		cf.Release(cast(cf.TypeRef)windows)
+	}
 	next: [dynamic]App
 	for index in 0 ..< send(uint, running, "count") {
 		app := send(^ns.Object, running, "objectAtIndex:", index)
@@ -147,6 +160,9 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned, app_ord
 		}
 		pid := send(i32, app, "processIdentifier")
 		bundle_id := app_bundle_identifier(app)
+		if pinned_app_index(pinned, bundle_id) < 0 && !application_has_window(windows, pid) {
+			continue
+		}
 		candidate: App
 		for &previous in apps^ {
 			if (bundle_id != "" && previous.bundle_id == bundle_id) || previous.pid == pid {
