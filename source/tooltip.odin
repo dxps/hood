@@ -7,7 +7,7 @@ import rl "vendor:raylib"
 Tooltip :: struct {
 	window: ^ns.Object,
 	view:   ^ns.Object,
-	pid:    i32,
+	app_id: u64,
 }
 
 close_tooltip :: proc(tooltip: ^Tooltip) {
@@ -16,9 +16,9 @@ close_tooltip :: proc(tooltip: ^Tooltip) {
 }
 
 hide_tooltip :: proc(tooltip: ^Tooltip) {
-	if tooltip.pid != 0 {
+	if tooltip.app_id != 0 {
 		notify(tooltip.window, "orderOut:", (^ns.Object)(nil))
-		tooltip.pid = 0
+		tooltip.app_id = 0
 	}
 }
 
@@ -98,7 +98,7 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.
 		notify(layer, "setCornerRadius:", ns.Float(7))
 		notify(layer, "setMasksToBounds:", ns.BOOL(true))
 	}
-	if tooltip.pid != app.pid || send_rect(tooltip.window, "frame").size.width != ns.Float(width) {
+	if tooltip.app_id != app.order_id || send_rect(tooltip.window, "frame").size.width != ns.Float(width) {
 		// Render with the same Raylib font as the shelf, at Retina resolution.
 		image := rl.GenImageColor(width * 2, height * 2, {54, 54, 60, 255})
 		defer rl.UnloadImage(image)
@@ -116,7 +116,7 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.
 		notify(icon, "setSize:", frame.size)
 		notify(tooltip.view, "setImage:", icon)
 		notify(icon, "release")
-		tooltip.pid = app.pid
+		tooltip.app_id = app.order_id
 	}
 	if frame != send_rect(tooltip.window, "frame") {
 		notify(tooltip.window, "setFrame:display:", frame, ns.BOOL(true))

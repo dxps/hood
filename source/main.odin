@@ -33,10 +33,20 @@ shelf_layout :: proc(settings: Settings, count: int) -> Shelf_Layout {
 }
 
 App :: struct {
+	order_id:    u64,
 	pid:         i32,
+	bundle_id:   string,
 	name:        string,
 	icon:        rl.Texture2D,
 	hover_scale: f32,
+}
+
+next_app_order_id: u64 = 1
+
+new_app_order_id :: proc() -> u64 {
+	id := next_app_order_id
+	next_app_order_id += 1
+	return id
 }
 
 native_class :: proc(name: cstring) -> ^ns.Object {
@@ -52,7 +62,36 @@ cocoa_window :: proc() -> ^ns.Object {
 	return window
 }
 
-refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
+app_bundle_identifier :: proc(app: ^ns.Object) -> string {
+	value := send(^ns.Object, app, "bundleIdentifier")
+	if value == nil {
+		return ""
+	}
+	return string(send(cstring, value, "UTF8String"))
+}
+
+load_pinned_app :: proc(workspace: ^ns.Object, identifier: string) -> (App, bool) {
+	id := send(^ns.Object, native_class("NSString"), "stringWithUTF8String:", strings.clone_to_cstring(identifier, context.temp_allocator))
+	url := send(^ns.Object, workspace, "URLForApplicationWithBundleIdentifier:", id)
+	if url == nil {
+		return {}, false
+	}
+	path := send(^ns.Object, url, "path")
+	if path == nil {
+		return {}, false
+	}
+	name := send(^ns.Object, path, "lastPathComponent")
+	name = send(^ns.Object, name, "stringByDeletingPathExtension")
+	icon := send(^ns.Object, workspace, "iconForFile:", path)
+	return App {
+		order_id  = new_app_order_id(),
+		bundle_id = strings.clone(identifier),
+		name      = strings.clone(string(send(cstring, name, "UTF8String"))),
+		icon      = load_icon_image(icon),
+	}, true
+}
+
+refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned: []string) -> i32 {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
@@ -64,32 +103,69 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
 			continue
 		}
 		pid := send(i32, app, "processIdentifier")
-		icon: rl.Texture2D
-		hover_scale: f32
-		name: string
-		cached := false
+		bundle_id := app_bundle_identifier(app)
+		candidate: App
 		for &previous in apps^ {
-			if previous.pid == pid {
-				icon = previous.icon
-				hover_scale = previous.hover_scale
-				name = previous.name
+			if (bundle_id != "" && previous.bundle_id == bundle_id) || previous.pid == pid {
+				candidate = previous
+				previous.bundle_id = ""
 				previous.name = ""
 				previous.icon = {}
-				cached = true
 				break
 			}
 		}
-		if !cached {
-			icon = load_icon(app)
+		if candidate.order_id == 0 {
 			label := send(cstring, send(^ns.Object, app, "localizedName"), "UTF8String")
-			name = strings.clone(string(label))
+			candidate = App {
+				order_id  = new_app_order_id(),
+				pid       = pid,
+				bundle_id = strings.clone(bundle_id),
+				name      = strings.clone(string(label)),
+				icon      = load_icon(app),
+			}
+		} else {
+			candidate.pid = pid
+			if candidate.bundle_id == "" && bundle_id != "" {
+				candidate.bundle_id = strings.clone(bundle_id)
+			}
 		}
-		append(&next, App{pid, name, icon, hover_scale})
+		append(&next, candidate)
+	}
+	for identifier in pinned {
+		found := false
+		for candidate in next {
+			if candidate.bundle_id == identifier {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		candidate: App
+		for &previous in apps^ {
+			if previous.bundle_id == identifier {
+				candidate = previous
+				candidate.pid = 0
+				previous.bundle_id = ""
+				previous.name = ""
+				previous.icon = {}
+				break
+			}
+		}
+		if candidate.order_id == 0 {
+			loaded: bool
+			candidate, loaded = load_pinned_app(workspace, identifier)
+			if !loaded {
+				continue
+			}
+		}
+		append(&next, candidate)
 	}
 	ordered: [dynamic]App
 	for previous in apps^ {
 		for &candidate in next {
-			if candidate.pid == previous.pid {
+			if candidate.order_id == previous.order_id {
 				append(&ordered, candidate)
 				candidate = {}
 				break
@@ -109,6 +185,7 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
 
 free_apps :: proc(apps: [dynamic]App) {
 	for app in apps {
+		delete(app.bundle_id)
 		delete(app.name)
 		if app.icon.id != 0 {
 			rl.UnloadTexture(app.icon)
@@ -162,11 +239,12 @@ when !#config(HOOD_UI_MODULE, false) {
 
 run_shelf :: proc() {
 	home, home_err := os.user_home_dir(context.allocator)
-	config_dir, config_path: string
+	config_dir, config_path, pinned_path: string
 	settings := DEFAULT_SETTINGS
 	if home_err == nil {
 		config_dir = fmt.aprintf("%s/.config/hood", home)
 		config_path = fmt.aprintf("%s/hood.toml", config_dir)
+		pinned_path = fmt.aprintf("%s/pinned-apps", config_dir)
 		settings = load_settings(config_path)
 	}
 
@@ -175,6 +253,8 @@ run_shelf :: proc() {
 		return
 	}
 	executable, executable_err := os.get_executable_path(context.allocator)
+	pinned_apps := load_pinned_apps(pinned_path)
+	defer free_pinned_apps(pinned_apps)
 
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
@@ -221,7 +301,7 @@ run_shelf :: proc() {
 	defer close_live_ui(&ui)
 	tooltip: Tooltip
 	defer close_tooltip(&tooltip)
-	hovered_pid: i32
+	hovered_id: u64
 	hover_started: f64
 	startup_visible_until := rl.GetTime() + 2
 	for !rl.WindowShouldClose() {
@@ -232,7 +312,7 @@ run_shelf :: proc() {
 
 		now := rl.GetTime()
 		if now >= next_app_refresh {
-			active_pid = refresh_apps(workspace, &apps)
+			active_pid = refresh_apps(workspace, &apps, pinned_apps[:])
 			next_app_refresh = now + (1.0 if visibility.hidden else 0.25)
 		}
 		if now >= next_refresh {
@@ -261,7 +341,7 @@ run_shelf :: proc() {
 		)
 		if visibility.hidden {
 			hide_tooltip(&tooltip)
-			hovered_pid = 0
+			hovered_id = 0
 			// Keep Cocoa responsive and check the reveal edge without drawing or swapping buffers.
 			rl.PollInputEvents()
 			time.sleep(40 * time.Millisecond)
@@ -275,38 +355,78 @@ run_shelf :: proc() {
 		viewport := layout.horizontal ? width : height
 		max_scroll := f32(max(0, layout.length - viewport))
 		scroll = clamp(scroll - rl.GetMouseWheelMove() * f32(layout.step), 0, max_scroll)
-		open_settings := false
 		context_click := interactive && rl.IsMouseButtonReleased(.RIGHT)
 		if context_click {
 			hide_tooltip(&tooltip)
-			open_settings = show_context_menu(window)
 		}
 		if rl.IsKeyPressed(.ESCAPE) {
 			break
 		}
 
 		result := ui_shelf(&ui, apps[:], settings, width, height, scroll, active_pid, context_click || !interactive)
-		if result.clicked_pid != 0 {
-			target := send(
-				^ns.Object,
-				native_class("NSRunningApplication"),
-				"runningApplicationWithProcessIdentifier:",
-				result.clicked_pid,
-			)
-			hidden := send(ns.BOOL, target, "isHidden")
-			active := send(ns.BOOL, target, "isActive") || result.clicked_pid == active_pid
-			if hidden {
-				send(ns.BOOL, target, "unhide")
-				send(ns.BOOL, target, "activateWithOptions:", uint(0))
-			} else if active {
-				send(ns.BOOL, target, "hide")
-			} else {
-				send(ns.BOOL, target, "activateWithOptions:", uint(0))
+		menu_choice := Menu_Choice.None
+		if context_click {
+			context_app: ^App
+			for &app in apps {
+				if app.order_id == result.pointed_id {
+					context_app = &app
+					break
+				}
+			}
+			kept := context_app != nil && pinned_app_index(pinned_apps[:], context_app.bundle_id) >= 0
+			menu_choice = show_context_menu(window, context_app, kept)
+			if menu_choice == .Keep_In_Dock && context_app != nil {
+				err := set_pinned_app(config_dir, pinned_path, &pinned_apps, context_app.bundle_id, !kept)
+				if err != nil {
+					fmt.eprintfln("Could not save pinned apps: %v", err)
+				} else {
+					next_app_refresh = 0
+				}
+			}
+		}
+		open_settings := menu_choice == .Settings
+		if result.clicked_id != 0 {
+			clicked: ^App
+			for &app in apps {
+				if app.order_id == result.clicked_id {
+					clicked = &app
+					break
+				}
+			}
+			if clicked != nil && clicked.pid != 0 {
+				target := send(
+					^ns.Object,
+					native_class("NSRunningApplication"),
+					"runningApplicationWithProcessIdentifier:",
+					clicked.pid,
+				)
+				hidden := send(ns.BOOL, target, "isHidden")
+				active := send(ns.BOOL, target, "isActive") || clicked.pid == active_pid
+				if hidden {
+					send(ns.BOOL, target, "unhide")
+					send(ns.BOOL, target, "activateWithOptions:", uint(0))
+				} else if active {
+					send(ns.BOOL, target, "hide")
+				} else {
+					send(ns.BOOL, target, "activateWithOptions:", uint(0))
+				}
+			} else if clicked != nil && clicked.bundle_id != "" {
+				identifier := send(
+					^ns.Object,
+					native_class("NSString"),
+					"stringWithUTF8String:",
+					strings.clone_to_cstring(clicked.bundle_id, context.temp_allocator),
+				)
+				url := send(^ns.Object, workspace, "URLForApplicationWithBundleIdentifier:", identifier)
+				if url != nil {
+					send(ns.BOOL, workspace, "openURL:", url)
+					next_app_refresh = 0
+				}
 			}
 		}
 		hovered := result.hovered
-		if hovered.pid != hovered_pid {
-			hovered_pid = hovered.pid
+		if hovered.order_id != hovered_id {
+			hovered_id = hovered.order_id
 			hover_started = rl.GetTime()
 		}
 		if hovered.name != "" && rl.GetTime() - hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {

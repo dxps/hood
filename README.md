@@ -44,6 +44,10 @@ Choose the left, right, bottom, or top screen edge and set the icon size from 24
 Changes apply while Settings is open and are saved automatically to
 `~/.config/hood/hood.toml`. Hood loads the file at startup.
 
+Right-click an app icon and choose **Keep in Dock** to keep it available after
+the app quits. The checked item can be selected again to remove it. Clicking a
+kept app that is not running launches it.
+
 ```toml
 edge = "left"
 icon_size = 32

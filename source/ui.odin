@@ -325,7 +325,7 @@ draw_shelf :: proc(
 ) -> (
 	result: Shelf_Frame,
 ) {
-	@(static) drag_pid: i32
+	@(static) drag_id: u64
 	@(static) drag_start: rl.Vector2
 	@(static) dragging: bool
 
@@ -342,7 +342,7 @@ draw_shelf :: proc(
 	rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
 
 	hovered_index := -1
-	if !context_click && pointer_inside {
+	if pointer_inside {
 		for _, index in apps {
 			size := f32(settings.icon_size)
 			offset := f32(layout.start + i32(index) * layout.step) - scroll
@@ -361,11 +361,11 @@ draw_shelf :: proc(
 		}
 	}
 	if rl.IsMouseButtonPressed(.LEFT) && hovered_index >= 0 {
-		drag_pid = apps[hovered_index].pid
+		drag_id = apps[hovered_index].order_id
 		drag_start = mouse
 		dragging = false
 	}
-	if drag_pid != 0 && rl.IsMouseButtonDown(.LEFT) {
+	if drag_id != 0 && rl.IsMouseButtonDown(.LEFT) {
 		delta := mouse - drag_start
 		if !dragging && delta.x * delta.x + delta.y * delta.y >= 16 {
 			dragging = true
@@ -373,13 +373,13 @@ draw_shelf :: proc(
 		if dragging {
 			from := -1
 			for app, index in apps {
-				if app.pid == drag_pid {
+				if app.order_id == drag_id {
 					from = index
 					break
 				}
 			}
 			if from < 0 {
-				drag_pid = 0
+				drag_id = 0
 				dragging = false
 			} else {
 				axis := mouse.y if !layout.horizontal else mouse.x
@@ -406,14 +406,14 @@ draw_shelf :: proc(
 		}
 	}
 	was_dragging := dragging
-	if drag_pid != 0 && rl.IsMouseButtonReleased(.LEFT) {
-		if !dragging && hovered_index >= 0 && apps[hovered_index].pid == drag_pid {
-			result.clicked_pid = drag_pid
+	if drag_id != 0 && rl.IsMouseButtonReleased(.LEFT) {
+		if !dragging && hovered_index >= 0 && apps[hovered_index].order_id == drag_id {
+			result.clicked_id = drag_id
 		}
-		drag_pid = 0
+		drag_id = 0
 		dragging = false
-	} else if drag_pid != 0 && !rl.IsMouseButtonDown(.LEFT) {
-		drag_pid = 0
+	} else if drag_id != 0 && !rl.IsMouseButtonDown(.LEFT) {
+		drag_id = 0
 		dragging = false
 	}
 
@@ -431,7 +431,10 @@ draw_shelf :: proc(
 		x_padding := min(padding, f32(settings.horizontal_margin))
 		y_padding := min(padding, f32(settings.vertical_margin))
 		row := rl.Rectangle{icon.x - x_padding, icon.y - y_padding, size + 2 * x_padding, size + 2 * y_padding}
-		hover := !was_dragging && index == hovered_index
+		hover := !context_click && !was_dragging && index == hovered_index
+		if index == hovered_index {
+			result.pointed_id = app.order_id
+		}
 		if hover {
 			result.hovered = app
 			result.tooltip_center = center
@@ -461,7 +464,7 @@ draw_shelf :: proc(
 			}
 			icon = {x, y, grown, grown}
 		}
-		if was_dragging && app.pid == drag_pid {
+		if was_dragging && app.order_id == drag_id {
 			icon.x = mouse.x - icon.width / 2
 			icon.y = mouse.y - icon.height / 2
 			raised_icon = app.icon

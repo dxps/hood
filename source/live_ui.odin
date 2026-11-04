@@ -28,7 +28,8 @@ settings_height :: proc(settings: Settings) -> i32 {
 Shelf_Frame :: struct {
 	hovered:        App,
 	tooltip_center: rl.Vector2,
-	clicked_pid:    i32,
+	clicked_id:     u64,
+	pointed_id:     u64,
 }
 
 // Keep the module boundary here so changes to these signatures rebuild the host.

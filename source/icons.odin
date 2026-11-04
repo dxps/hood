@@ -18,6 +18,10 @@ load_icon :: proc(app: ^ns.Object) -> rl.Texture2D {
 	defer notify(pool, "drain")
 
 	icon := send(^ns.Object, app, "icon")
+	return load_icon_image(icon)
+}
+
+load_icon_image :: proc(icon: ^ns.Object) -> rl.Texture2D {
 	if icon == nil {
 		return {}
 	}
