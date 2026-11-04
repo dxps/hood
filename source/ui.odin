@@ -347,6 +347,9 @@ settings_view :: proc(
 }
 
 draw_shelf :: proc(
+	window: ^ns.Object,
+	input: ^Native_Input,
+	delta: f32,
 	apps: []App,
 	settings: Settings,
 	width, height: i32,
@@ -363,14 +366,10 @@ draw_shelf :: proc(
 	layout := shelf_layout(settings, len(apps))
 	// Cocoa can report the pointer over a newly revealed window before GLFW
 	// receives a cursor-enter or motion event.
-	pointer := send(ns.Point, cocoa_window(), "mouseLocationOutsideOfEventStream")
+	pointer := send(ns.Point, window, "mouseLocationOutsideOfEventStream")
 	mouse := rl.Vector2{f32(pointer.x), f32(height) - f32(pointer.y)}
 	pointer_inside := mouse.x >= 0 && mouse.x < f32(width) && mouse.y >= 0 && mouse.y < f32(height)
-	rl.BeginDrawing()
-	rl.ClearBackground(rl.BLANK)
-	shelf_rect := rl.Rectangle{0, 0, f32(width), f32(height)}
-	roundness := min(1, 2 * f32(settings.corner_radius) / min(shelf_rect.width, shelf_rect.height))
-	rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
+	hood_begin(window, settings.background_rgb, f64(settings.corner_radius))
 
 	hovered_index := -1
 	if pointer_inside {
@@ -391,12 +390,12 @@ draw_shelf :: proc(
 			}
 		}
 	}
-	if rl.IsMouseButtonPressed(.LEFT) && hovered_index >= 0 {
+	if (input.pressed != 0) && hovered_index >= 0 {
 		drag_id = apps[hovered_index].order_id
 		drag_start = mouse
 		dragging = false
 	}
-	if drag_id != 0 && rl.IsMouseButtonDown(.LEFT) {
+	if drag_id != 0 && (input.down != 0) {
 		delta := mouse - drag_start
 		if !dragging && delta.x * delta.x + delta.y * delta.y >= 16 {
 			dragging = true
@@ -438,18 +437,18 @@ draw_shelf :: proc(
 		}
 	}
 	was_dragging := dragging
-	if drag_id != 0 && rl.IsMouseButtonReleased(.LEFT) {
+	if drag_id != 0 && (input.released != 0) {
 		if !dragging && hovered_index >= 0 && apps[hovered_index].order_id == drag_id {
 			result.clicked_id = drag_id
 		}
 		drag_id = 0
 		dragging = false
-	} else if drag_id != 0 && !rl.IsMouseButtonDown(.LEFT) {
+	} else if drag_id != 0 && !(input.down != 0) {
 		drag_id = 0
 		dragging = false
 	}
 
-	raised_icon: rl.Texture2D
+	raised_icon: rawptr
 	raised_rect: rl.Rectangle
 	for &app, index in apps {
 		size := f32(settings.icon_size)
@@ -472,11 +471,11 @@ draw_shelf :: proc(
 			result.tooltip_center = center
 		}
 		if app.pid == active_pid {
-			rl.DrawRectangleRounded(row, 0.24, 8, {63, 63, 69, 255})
+			hood_highlight(window, row.x, row.y, row.width, row.height)
 		}
 		target: f32 = 1 if hover && settings.magnification_percent > 0 else 0
 		if settings.magnification_percent > 0 && settings.hover_animation_tenths > 0 {
-			step := rl.GetFrameTime() * 10 / f32(settings.hover_animation_tenths)
+			step := delta * 10 / f32(settings.hover_animation_tenths)
 			app.hover_scale += clamp(target - app.hover_scale, -step, step)
 		} else {
 			app.hover_scale = target
@@ -505,21 +504,16 @@ draw_shelf :: proc(
 			raised_icon = app.icon
 			raised_rect = icon
 		} else {
-			draw_app_icon(app.icon, icon)
+			draw_app_icon(window, app.icon, icon)
 		}
 	}
 	if raised_rect.width > 0 {
-		draw_app_icon(raised_icon, raised_rect)
+		draw_app_icon(window, raised_icon, raised_rect)
 	}
-	rl.EndDrawing()
+	hood_end(window)
 	return
 }
 
-draw_app_icon :: proc(texture: rl.Texture2D, icon: rl.Rectangle) {
-	if texture.id != 0 {
-		source := rl.Rectangle{0, 0, f32(texture.width), f32(texture.height)}
-		rl.DrawTexturePro(texture, source, icon, {}, 0, rl.WHITE)
-	} else {
-		rl.DrawCircleV({icon.x + icon.width / 2, icon.y + icon.height / 2}, icon.width / 3, rl.GRAY)
-	}
+draw_app_icon :: proc(window: ^ns.Object, image: rawptr, icon: rl.Rectangle) {
+	hood_icon(window, image, icon.x, icon.y, icon.width, icon.height)
 }

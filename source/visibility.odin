@@ -1,7 +1,6 @@
 package main
 
 import ns "vendor:darwin/AppKit"
-import rl "vendor:raylib"
 
 Shelf_Visibility :: struct {
 	resting, display:   ns.Rect,
@@ -56,7 +55,7 @@ delayed_visibility :: proc(state: ^Shelf_Visibility, requested: bool, now: f64, 
 	return state.showing
 }
 
-update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, settings: Settings, keep_visible: bool) -> bool {
+update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, settings: Settings, now, delta: f64, keep_visible: bool) -> bool {
 	if state.resting.size.width <= 0 || state.resting.size.height <= 0 {
 		return false
 	}
@@ -72,11 +71,11 @@ update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, se
 			state.approaching = false
 		}
 		requested := state.approaching || (inside && !state.hidden)
-		show = delayed_visibility(state, requested, rl.GetTime(), settings.show_hide_delay_ms)
+		show = delayed_visibility(state, requested, now, settings.show_hide_delay_ms)
 		if settings.animation_tenths == 0 {
 			state.progress = 1 if show else 0
 		} else {
-			step := f64(min(rl.GetFrameTime(), 0.05)) / (f64(settings.animation_tenths) / 10)
+			step := min(delta, 0.05) / (f64(settings.animation_tenths) / 10)
 			state.progress = clamp(state.progress + (step if show else -step), 0, 1)
 		}
 	} else {

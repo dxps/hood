@@ -1,11 +1,13 @@
 package main
 
 import ns "vendor:darwin/AppKit"
-import rl "vendor:raylib"
+
 
 foreign import core_graphics "system:CoreGraphics.framework"
 
 foreign core_graphics {
+	CGBitmapContextCreateImage :: proc "c" (bitmap: rawptr) -> rawptr ---
+	CGImageRelease :: proc "c" (image: rawptr) ---
 	CGColorSpaceCreateDeviceRGB :: proc "c" () -> rawptr ---
 	CGColorSpaceRelease :: proc "c" (space: rawptr) ---
 	CGBitmapContextCreate :: proc "c" (pixels: rawptr, width, height, bits, stride: uint,
@@ -13,7 +15,7 @@ foreign core_graphics {
 	CGContextRelease :: proc "c" (graphics: rawptr) ---
 }
 
-load_icon :: proc(app: ^ns.Object) -> rl.Texture2D {
+load_icon :: proc(app: ^ns.Object) -> rawptr {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
@@ -21,7 +23,7 @@ load_icon :: proc(app: ^ns.Object) -> rl.Texture2D {
 	return load_icon_image(icon)
 }
 
-load_icon_image :: proc(icon: ^ns.Object) -> rl.Texture2D {
+load_icon_image :: proc(icon: ^ns.Object) -> rawptr {
 	if icon == nil {
 		return {}
 	}
@@ -29,13 +31,13 @@ load_icon_image :: proc(icon: ^ns.Object) -> rl.Texture2D {
 	// Allow for a 48-point icon magnified by 60% at Retina resolution.
 	side :: 160
 	premultiplied_last :: 1
-	pixels: [side * side]rl.Color
+	pixels: [side * side * 4]u8
 	space := CGColorSpaceCreateDeviceRGB()
 	if space == nil {
 		return {}
 	}
 	defer CGColorSpaceRelease(space)
-	bitmap := CGBitmapContextCreate(raw_data(pixels[:]), side, side, 8, side * size_of(rl.Color),
+	bitmap := CGBitmapContextCreate(raw_data(pixels[:]), side, side, 8, side * 4,
 		space, premultiplied_last)
 	if bitmap == nil {
 		return {}
@@ -52,17 +54,5 @@ load_icon_image :: proc(icon: ^ns.Object) -> rl.Texture2D {
 	notify(graphics_class, "setCurrentContext:", graphics)
 	notify(icon, "drawInRect:", ns.Rect{size = {side, side}})
 
-	// Raylib textures use straight alpha. Core Graphics renders premultiplied RGBA.
-	for &pixel in pixels {
-		if pixel.a > 0 && pixel.a < 255 {
-			alpha := u32(pixel.a)
-			pixel.r = u8(min(255, (u32(pixel.r) * 255 + alpha / 2) / alpha))
-			pixel.g = u8(min(255, (u32(pixel.g) * 255 + alpha / 2) / alpha))
-			pixel.b = u8(min(255, (u32(pixel.b) * 255 + alpha / 2) / alpha))
-		}
-	}
-	return rl.LoadTextureFromImage({
-		data = raw_data(pixels[:]), width = side, height = side, mipmaps = 1,
-		format = .UNCOMPRESSED_R8G8B8A8,
-	})
+	return CGBitmapContextCreateImage(bitmap)
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 cd "$(dirname "$0")"
+./build_native.sh
 
 output=${2:-build/debug/hood}
 out=$(dirname "$output")

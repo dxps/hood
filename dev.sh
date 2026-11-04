@@ -24,9 +24,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 host_snapshot() {
-    find source -type f \( -name '*.odin' -o -name '*.ttf' \) ! -path 'source/ui.odin' \
+    find source -type f \( -name '*.odin' -o -name '*.ttf' -o -name '*.m' \) ! -path 'source/ui.odin' \
         -exec shasum {} + | LC_ALL=C sort
-    shasum build_debug.sh
+    shasum build_debug.sh build_native.sh
 }
 
 previous_host=

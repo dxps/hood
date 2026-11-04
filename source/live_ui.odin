@@ -36,6 +36,9 @@ Shelf_Frame :: struct {
 // Keep the module boundary here so changes to these signatures rebuild the host.
 @(export)
 hood_draw_shelf :: proc(
+	window: ^ns.Object,
+	input: ^Native_Input,
+	delta: f32,
 	apps: []App,
 	settings: Settings,
 	width, height: i32,
@@ -43,7 +46,7 @@ hood_draw_shelf :: proc(
 	active_pid: i32,
 	context_click: bool,
 ) -> Shelf_Frame {
-	return draw_shelf(apps, settings, width, height, scroll, active_pid, context_click)
+	return draw_shelf(window, input, delta, apps, settings, width, height, scroll, active_pid, context_click)
 }
 
 @(export)
@@ -72,7 +75,7 @@ Live_UI :: struct {
 
 refresh_live_ui :: proc(ui: ^Live_UI) {
 	if LIVE_UI {
-		now := rl.GetTime()
+		now := hood_time()
 		if now < ui.last_check {
 			return
 		}
@@ -126,6 +129,9 @@ close_live_ui :: proc(ui: ^Live_UI) {
 
 ui_shelf :: proc(
 	ui: ^Live_UI,
+	window: ^ns.Object,
+	input: ^Native_Input,
+	delta: f32,
 	apps: []App,
 	settings: Settings,
 	width, height: i32,
@@ -135,7 +141,7 @@ ui_shelf :: proc(
 ) -> Shelf_Frame {
 	refresh_live_ui(ui)
 	draw := ui.shelf if ui.shelf != nil else hood_draw_shelf
-	return draw(apps, settings, width, height, scroll, active_pid, context_click)
+	return draw(window, input, delta, apps, settings, width, height, scroll, active_pid, context_click)
 }
 
 ui_settings :: proc(

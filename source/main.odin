@@ -7,7 +7,6 @@ import cf "core:sys/darwin/CoreFoundation"
 import cg "core:sys/darwin/CoreGraphics"
 import objcrt "core:sys/darwin/ObjectiveC"
 import ns "vendor:darwin/AppKit"
-import "core:time"
 import rl "vendor:raylib"
 
 Shelf_Layout :: struct {
@@ -39,7 +38,7 @@ App :: struct {
 	pid:         i32,
 	bundle_id:   string,
 	name:        string,
-	icon:        rl.Texture2D,
+	icon:        rawptr,
 	hover_scale: f32,
 }
 
@@ -255,8 +254,8 @@ free_apps :: proc(apps: [dynamic]App) {
 	for app in apps {
 		delete(app.bundle_id)
 		delete(app.name)
-		if app.icon.id != 0 {
-			rl.UnloadTexture(app.icon)
+		if app.icon != nil {
+			CGImageRelease(app.icon)
 		}
 	}
 	delete(apps)
@@ -330,23 +329,12 @@ run_shelf :: proc() {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
-	rl.SetConfigFlags({.WINDOW_UNDECORATED, .WINDOW_TRANSPARENT, .WINDOW_TOPMOST, .WINDOW_HIGHDPI, .VSYNC_HINT})
-	initial_layout := shelf_layout(settings, 0)
-	rl.InitWindow(initial_layout.thickness, initial_layout.length, "Hood")
-	defer rl.CloseWindow()
-	load_ui_font()
-	defer rl.UnloadFont(work_sans)
-	rl.SetTargetFPS(60)
-	rl.SetExitKey(.KEY_NULL)
-
-	window := cocoa_window()
-	if !send(ns.BOOL, window, "isKindOfClass:", objcrt.objc_lookUpClass("NSWindow")) {
-		fmt.eprintln("Hood could not obtain the Raylib Cocoa window.")
+	window := hood_create()
+	if window == nil {
+		fmt.eprintln("Hood could not create its native shelf window.")
 		return
 	}
-	application := send(^ns.Object, native_class("NSApplication"), "sharedApplication")
-	send(ns.BOOL, application, "setActivationPolicy:", int(1))
-	notify(window, "setCollectionBehavior:", ns.WindowCollectionBehavior{.MoveToActiveSpace})
+	defer hood_close(window)
 	workspace := send(^ns.Object, native_class("NSWorkspace"), "sharedWorkspace")
 
 	apps: [dynamic]App
@@ -376,14 +364,24 @@ run_shelf :: proc() {
 	hover_started: f64
 	last_pointer := ns.Point{-1e9, -1e9}
 	redraw_until: f64
-	startup_visible_until := rl.GetTime() + 2
-	for !rl.WindowShouldClose() {
-		// Raylib pumps Cocoa events on this thread, outside AppKit's usual run loop.
+	startup_visible_until := hood_time() + 2
+	last_frame := hood_time()
+	input: Native_Input
+	wait: f64 = 0
+	for {
+		// Bound temporary Cocoa and Odin allocations to one event-loop iteration.
 		frame_pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 		defer notify(frame_pool, "drain")
 		defer free_all(context.temp_allocator)
 
-		now := rl.GetTime()
+		hood_poll(window, &input, wait)
+		if input.escape != 0 {
+			break
+		}
+		now := hood_time()
+		delta := min(now - last_frame, 0.05)
+		last_frame = now
+		wait = 1.0 / 60
 		redraw := false
 		if now >= next_app_refresh {
 			active_pid = refresh_apps(workspace, &apps, pinned_apps[:], app_order[:])
@@ -421,14 +419,14 @@ run_shelf :: proc() {
 			window,
 			&visibility,
 			settings,
+			now, delta,
 			keep_visible = now < startup_visible_until || settings_process.pid != 0,
 		)
 		if visibility.hidden {
 			hide_tooltip(&tooltip)
 			hovered_id = 0
 			// Keep Cocoa responsive and check the reveal edge without drawing or swapping buffers.
-			rl.PollInputEvents()
-			time.sleep(40 * time.Millisecond)
+			wait = 0.04
 			continue
 		}
 		if was_hidden {
@@ -438,33 +436,32 @@ run_shelf :: proc() {
 		bounds := send_rect(window, "frame").size
 		pointer_inside := pointer.x >= 0 && pointer.y >= 0 && pointer.x < bounds.width && pointer.y < bounds.height
 		previous_inside := last_pointer.x >= 0 && last_pointer.y >= 0 && last_pointer.x < bounds.width && last_pointer.y < bounds.height
-		if (pointer != last_pointer && (pointer_inside || previous_inside)) || rl.IsMouseButtonDown(.LEFT) ||
-		   rl.IsMouseButtonReleased(.LEFT) || rl.IsMouseButtonReleased(.RIGHT) ||
-		   rl.GetMouseWheelMove() != 0 {
+		if (pointer != last_pointer && (pointer_inside || previous_inside)) || input.down != 0 ||
+		   input.released != 0 || input.right != 0 ||
+		   f32(input.wheel) != 0 {
 			redraw_until = now + max(f64(settings.hover_animation_tenths) / 10, f64(settings.tooltip_delay_ms) / 1000) + 0.1
 		}
 		last_pointer = pointer
 		if !redraw && !was_hidden && now > redraw_until &&
-		   (visibility.progress == 0 || visibility.progress == 1) && !rl.IsKeyPressed(.ESCAPE) {
+		   (visibility.progress == 0 || visibility.progress == 1) && input.escape == 0 {
 			// Preserve the last frame; still pump input so clicks and reveal remain responsive.
-			rl.PollInputEvents()
-			time.sleep(40 * time.Millisecond)
+			wait = 0.04
 			continue
 		}
-		width, height := rl.GetScreenWidth(), rl.GetScreenHeight()
+		width, height := i32(bounds.width), i32(bounds.height)
 		layout := shelf_layout(settings, len(apps))
 		viewport := layout.horizontal ? width : height
 		max_scroll := f32(max(0, layout.length - viewport))
-		scroll = clamp(scroll - rl.GetMouseWheelMove() * f32(layout.step), 0, max_scroll)
-		context_click := interactive && rl.IsMouseButtonReleased(.RIGHT)
+		scroll = clamp(scroll - f32(input.wheel) * f32(layout.step), 0, max_scroll)
+		context_click := interactive && input.right != 0
 		if context_click {
 			hide_tooltip(&tooltip)
 		}
-		if rl.IsKeyPressed(.ESCAPE) {
+		if input.escape != 0 {
 			break
 		}
 
-		result := ui_shelf(&ui, apps[:], settings, width, height, scroll, active_pid, context_click || !interactive)
+		result := ui_shelf(&ui, window, &input, f32(delta), apps[:], settings, width, height, scroll, active_pid, context_click || !interactive)
 		if result.order_changed {
 			_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
 			if order_err != nil {
@@ -539,9 +536,9 @@ run_shelf :: proc() {
 		hovered := result.hovered
 		if hovered.order_id != hovered_id {
 			hovered_id = hovered.order_id
-			hover_started = rl.GetTime()
+			hover_started = hood_time()
 		}
-		if hovered.name != "" && rl.GetTime() - hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {
+		if hovered.name != "" && hood_time() - hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {
 			show_tooltip(&tooltip, window, hovered, result.tooltip_center, settings.edge)
 		} else {
 			hide_tooltip(&tooltip)
