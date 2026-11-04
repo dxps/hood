@@ -265,6 +265,9 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	color_panel: ^ns.Object
 	picker_active := false
 	picker_rgb := draft.background_rgb
+	runtime := Runtime_State{dock_pid = i32(posix.getppid())}
+	init_runtime_login(&runtime)
+	defer close_runtime_login(&runtime)
 	for !rl.WindowShouldClose() && posix.getppid() != 1 {
 		frame_pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 		defer notify(frame_pool, "drain")
@@ -278,7 +281,21 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 			}
 			picker_active = send(ns.BOOL, color_panel, "isVisible")
 		}
-		pick_color, done := ui_settings(&ui, window, &draft, failed, &dropdown)
+		if runtime.selected && rl.GetTime() >= runtime.next_sample {
+			update_runtime(&runtime)
+			runtime.next_sample = rl.GetTime() + 1
+		}
+		pick_color, done := ui_settings(&ui, window, &draft, failed, &dropdown, &runtime)
+		if runtime.login_toggle {
+			toggle_runtime_login(&runtime)
+		}
+		if runtime.quit_requested {
+			if i32(posix.getppid()) == runtime.dock_pid && runtime.dock_pid > 1 && posix.kill(posix.pid_t(runtime.dock_pid), .SIGTERM) == .OK {
+				break
+			}
+			runtime.quit_failed = true
+			runtime.quit_requested = false
+		}
 		if draft != previous {
 			failed = true
 			if config_path != "" {

@@ -170,23 +170,54 @@ dropdown_popup :: proc(
 	return -1
 }
 
+settings_tabs :: proc(theme: Settings_Theme, runtime: ^Runtime_State, dropdown: ^Settings_Dropdown) {
+	labels := [2]cstring{"Settings", "Runtime"}
+	selected := int(runtime.selected)
+	// One tab strip: the selected tab joins the content below the divider.
+	rl.DrawRectangle(0, 0, SETTINGS_WIDTH, 48, theme.button)
+	rl.DrawLine(0, 47, SETTINGS_WIDTH, 47, theme.popup_border)
+	for label, index in labels {
+		rect := rl.Rectangle{f32(SETTINGS_WIDTH - 224) / 2 + f32(index) * 112, 12, 112, 36}
+		hover := rl.CheckCollisionPointRec(rl.GetMousePosition(), rect)
+		color := theme.background if index == selected else (theme.hover if hover else theme.button)
+		// Square off the bottom corners so the active tab still joins its content.
+		rl.DrawRectangleRounded(rect, 0.44, 12, theme.popup_border)
+		inner := rl.Rectangle{rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 1}
+		rl.DrawRectangleRounded(inner, 0.40, 12, color)
+		rl.DrawRectangleRec({rect.x, rect.y + 18, rect.width, 17}, theme.popup_border)
+		rl.DrawRectangleRec({rect.x + 1, rect.y + 18, rect.width - 2, 17}, color)
+		rl.DrawRectangleRec({rect.x + 1, 47, rect.width - 2, 1 if index == selected else 0}, color)
+		draw_text(label, i32(rect.x + (rect.width - text_width(label, 16)) / 2), 23, 16, theme.text)
+		if hover && rl.IsMouseButtonReleased(.LEFT) {
+			runtime.selected = index == 1
+			dropdown^ = .None
+		}
+	}
+}
+
 settings_view :: proc(
 	draft: ^Settings,
 	failed: bool,
 	theme: Settings_Theme,
 	dropdown: ^Settings_Dropdown,
+	runtime: ^Runtime_State,
 ) -> (
 	pick_color, done: bool,
 ) {
 	rl.BeginDrawing()
 	defer rl.EndDrawing()
 	rl.ClearBackground(theme.background)
+	settings_tabs(theme, runtime, dropdown)
+	if runtime.selected {
+		runtime_view(theme, runtime)
+		return
+	}
 	show_labels := [2]cstring{"Always", "Auto-Hide"}
 	animation_labels := [6]cstring{"0 seconds (no animation)", "100 ms", "200 ms", "300 ms", "400 ms", "500 ms"}
 	was_open := dropdown^ != .None
-	offset: i32 = 50
-	draw_text("Show", 20, 28, 16, theme.text)
-	dropdown_button(theme, dropdown, .Show, 20, show_labels[int(draft.auto_hide)])
+	offset: i32 = 98
+	draw_text("Show", 20, 76, 16, theme.text)
+	dropdown_button(theme, dropdown, .Show, 68, show_labels[int(draft.auto_hide)])
 	delay_labels := [5]cstring{"Immediate", "50 ms", "100 ms", "200 ms", "300 ms"}
 	delay_choice := 0
 	for delay, index in SHOW_HIDE_DELAYS_MS {
@@ -197,16 +228,16 @@ settings_view :: proc(
 	}
 	if draft.auto_hide {
 		offset += 90
-		draw_text("Show/hide animation", 20, 78, 16, theme.text)
+		draw_text("Show/hide animation", 20, 126, 16, theme.text)
 		dropdown_button(
 			theme,
 			dropdown,
 			.Animation,
-			70,
+			118,
 			"0 seconds" if draft.animation_tenths == 0 else animation_labels[draft.animation_tenths],
 		)
-		draw_text("Show/hide delay", 20, 118, 16, theme.text)
-		dropdown_button(theme, dropdown, .Show_Hide_Delay, 110, delay_labels[delay_choice])
+		draw_text("Show/hide delay", 20, 166, 16, theme.text)
+		dropdown_button(theme, dropdown, .Show_Hide_Delay, 158, delay_labels[delay_choice])
 	}
 	draw_text("Position", 20, 28 + offset, 16, theme.text)
 	dropdown_button(theme, dropdown, .Position, 20 + offset, EDGE_LABELS[draft.edge])
@@ -265,13 +296,13 @@ settings_view :: proc(
 		switch dropdown^ {
 		case .None:
 		case .Show:
-			if choice := dropdown_popup(theme, 56, show_labels[:], int(draft.auto_hide), was_open); choice >= 0 {
+			if choice := dropdown_popup(theme, 104, show_labels[:], int(draft.auto_hide), was_open); choice >= 0 {
 				draft.auto_hide = choice == 1
 			}
 		case .Animation:
 			if choice := dropdown_popup(
 				theme,
-				106,
+				154,
 				animation_labels[:MAX_SHOW_ANIMATION_TENTHS + 1],
 				int(draft.animation_tenths),
 				was_open,
@@ -280,7 +311,7 @@ settings_view :: proc(
 				draft.animation_tenths = i32(choice)
 			}
 		case .Show_Hide_Delay:
-			if choice := dropdown_popup(theme, 146, delay_labels[:], delay_choice, was_open); choice >= 0 {
+			if choice := dropdown_popup(theme, 194, delay_labels[:], delay_choice, was_open); choice >= 0 {
 				draft.show_hide_delay_ms = SHOW_HIDE_DELAYS_MS[choice]
 			}
 		case .Hover_Magnification:

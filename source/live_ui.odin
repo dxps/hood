@@ -22,7 +22,7 @@ Settings_Dropdown :: enum {
 }
 
 settings_height :: proc(settings: Settings) -> i32 {
-	return 688 + (90 if settings.auto_hide else 0)
+	return 736 + (90 if settings.auto_hide else 0)
 }
 
 Shelf_Frame :: struct {
@@ -53,12 +53,13 @@ hood_draw_settings :: proc(
 	draft: ^Settings,
 	failed: bool,
 	dropdown: ^Settings_Dropdown,
+	runtime: ^Runtime_State,
 ) -> (
 	bool,
 	bool,
 ) {
 	work_sans = font
-	return settings_view(draft, failed, settings_theme(window), dropdown)
+	return settings_view(draft, failed, settings_theme(window), dropdown, runtime)
 }
 
 Live_UI :: struct {
@@ -143,11 +144,12 @@ ui_settings :: proc(
 	draft: ^Settings,
 	failed: bool,
 	dropdown: ^Settings_Dropdown,
+	runtime: ^Runtime_State,
 ) -> (
 	bool,
 	bool,
 ) {
 	refresh_live_ui(ui)
 	draw := ui.settings if ui.settings != nil else hood_draw_settings
-	return draw(work_sans, window, draft, failed, dropdown)
+	return draw(work_sans, window, draft, failed, dropdown, runtime)
 }
