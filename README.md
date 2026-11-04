@@ -35,6 +35,10 @@ open build/release/Hood.app
 
 You can also double-click Hood.app in Finder. The build targets the architecture
 of the build machine and applies an ad hoc signature for local use.
+The minimum macOS version defaults to the build machine's installed version and
+is set explicitly in both the executable and app bundle. To target another
+version, run `MACOSX_DEPLOYMENT_TARGET=27.0 ./build_release.sh` (replace `27.0`
+with your target). Odin and its linked libraries must also support that version.
 
 ## Settings
 
