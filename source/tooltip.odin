@@ -1,7 +1,7 @@
 package main
 
 import "core:fmt"
-import ns "core:sys/darwin/Foundation"
+import ns "vendor:darwin/AppKit"
 import rl "vendor:raylib"
 
 Tooltip :: struct {
@@ -89,7 +89,7 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.
 		notify(tooltip.window, "setReleasedWhenClosed:", ns.BOOL(false))
 		notify(tooltip.window, "setIgnoresMouseEvents:", ns.BOOL(true))
 		notify(tooltip.window, "setLevel:", send(int, shelf, "level") + 1)
-		notify(tooltip.window, "setCollectionBehavior:", ns.WindowCollectionBehaviorMoveToActiveSpace)
+		notify(tooltip.window, "setCollectionBehavior:", ns.WindowCollectionBehavior{.MoveToActiveSpace})
 		tooltip.view = send(^ns.Object, native_class("NSImageView"), "new")
 		notify(tooltip.window, "setContentView:", tooltip.view)
 		notify(tooltip.view, "release")

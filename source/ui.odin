@@ -1,7 +1,7 @@
 package main
 
 import "core:fmt"
-import ns "core:sys/darwin/Foundation"
+import ns "vendor:darwin/AppKit"
 import rl "vendor:raylib"
 
 SETTINGS_BUTTON_RADIUS :: 9.0

@@ -3,7 +3,8 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import ns "core:sys/darwin/Foundation"
+import objcrt "core:sys/darwin/ObjectiveC"
+import ns "vendor:darwin/AppKit"
 import "core:time"
 import rl "vendor:raylib"
 
@@ -39,13 +40,13 @@ App :: struct {
 }
 
 native_class :: proc(name: cstring) -> ^ns.Object {
-	return (^ns.Object)(ns.objc_lookUpClass(name))
+	return (^ns.Object)(objcrt.objc_lookUpClass(name))
 }
 
 
 cocoa_window :: proc() -> ^ns.Object {
 	window := (^ns.Object)(rl.GetWindowHandle())
-	if send(ns.BOOL, window, "isKindOfClass:", ns.objc_lookUpClass("NSView")) {
+	if send(ns.BOOL, window, "isKindOfClass:", objcrt.objc_lookUpClass("NSView")) {
 		window = send(^ns.Object, window, "window")
 	}
 	return window
@@ -172,13 +173,13 @@ run_shelf :: proc() {
 	rl.SetExitKey(.KEY_NULL)
 
 	window := cocoa_window()
-	if !send(ns.BOOL, window, "isKindOfClass:", ns.objc_lookUpClass("NSWindow")) {
+	if !send(ns.BOOL, window, "isKindOfClass:", objcrt.objc_lookUpClass("NSWindow")) {
 		fmt.eprintln("Hood could not obtain the Raylib Cocoa window.")
 		return
 	}
 	application := send(^ns.Object, native_class("NSApplication"), "sharedApplication")
 	send(ns.BOOL, application, "setActivationPolicy:", int(1))
-	notify(window, "setCollectionBehavior:", ns.WindowCollectionBehaviorMoveToActiveSpace)
+	notify(window, "setCollectionBehavior:", ns.WindowCollectionBehavior{.MoveToActiveSpace})
 	workspace := send(^ns.Object, native_class("NSWorkspace"), "sharedWorkspace")
 
 	apps: [dynamic]App

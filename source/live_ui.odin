@@ -1,7 +1,7 @@
 package main
 
 import "core:dynlib"
-import ns "core:sys/darwin/Foundation"
+import ns "vendor:darwin/AppKit"
 import rl "vendor:raylib"
 
 LIVE_UI :: #config(HOOD_LIVE_UI, false)

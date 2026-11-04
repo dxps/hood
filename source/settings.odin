@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import ns "core:sys/darwin/Foundation"
+import ns "vendor:darwin/AppKit"
 import "core:sys/posix"
 import rl "vendor:raylib"
 

@@ -1,7 +1,8 @@
 package main
 
 import "core:math"
-import ns "core:sys/darwin/Foundation"
+import objcrt "core:sys/darwin/ObjectiveC"
+import ns "vendor:darwin/AppKit"
 
 set_color_panel_rgb :: proc(panel: ^ns.Object, rgb: u32) {
 	channel :: proc(value: u32) -> ns.Float {
@@ -17,7 +18,7 @@ set_color_panel_rgb :: proc(panel: ^ns.Object, rgb: u32) {
 	) -> ^ns.Object)objc_msgSend
 	color := make_color(
 		native_class("NSColor"),
-		ns.sel_registerName("colorWithSRGBRed:green:blue:alpha:"),
+		objcrt.sel_registerName("colorWithSRGBRed:green:blue:alpha:"),
 		channel(rgb >> 16),
 		channel(rgb >> 8),
 		channel(rgb),

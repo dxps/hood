@@ -1,6 +1,7 @@
 package main
 
-import ns "core:sys/darwin/Foundation"
+import objcrt "core:sys/darwin/ObjectiveC"
+import ns "vendor:darwin/AppKit"
 
 foreign import core_text "system:CoreText.framework"
 foreign import core_graphics "system:CoreGraphics.framework"
@@ -41,12 +42,12 @@ show_context_menu :: proc(window: ^ns.Object) -> bool {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
-	action := ns.sel_registerName("hoodSelectSettings:")
-	target_class := ns.objc_lookUpClass("HoodMenuTarget")
+	action := objcrt.sel_registerName("hoodSelectSettings:")
+	target_class := objcrt.objc_lookUpClass("HoodMenuTarget")
 	if target_class == nil {
-		target_class = ns.objc_allocateClassPair(ns.objc_lookUpClass("NSObject"), "HoodMenuTarget", 0)
-		ns.class_addMethod(target_class, action, cast(ns.IMP)menu_selected, "v@:@")
-		ns.objc_registerClassPair(target_class)
+		target_class = objcrt.objc_allocateClassPair(objcrt.objc_lookUpClass("NSObject"), "HoodMenuTarget", 0)
+		objcrt.class_addMethod(target_class, action, cast(objcrt.IMP)menu_selected, "v@:@")
+		objcrt.objc_registerClassPair(target_class)
 	}
 	target := send(^ns.Object, (^ns.Object)(target_class), "new")
 	defer notify(target, "release")
@@ -79,5 +80,5 @@ show_context_menu :: proc(window: ^ns.Object) -> bool {
 	point := send(ns.Point, window, "mouseLocationOutsideOfEventStream")
 	// AppKit handles placement, selection, and dismissal in its menu tracking loop.
 	popup := cast(proc "c" (_: ^ns.Object, _: ns.SEL, _: ^ns.Object, _: ns.Point, _: ^ns.Object) -> ns.BOOL)objc_msgSend
-	return popup(menu, ns.sel_registerName("popUpMenuPositioningItem:atLocation:inView:"), nil, point, view)
+	return popup(menu, objcrt.sel_registerName("popUpMenuPositioningItem:atLocation:inView:"), nil, point, view)
 }

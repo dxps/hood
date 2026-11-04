@@ -1,6 +1,7 @@
 package main
 
-import ns "core:sys/darwin/Foundation"
+import objcrt "core:sys/darwin/ObjectiveC"
+import ns "vendor:darwin/AppKit"
 
 foreign import objc "system:objc"
 
@@ -23,24 +24,24 @@ notify :: proc {
 
 send_0 :: proc($R: typeid, object: ^ns.Object, selector: cstring) -> R {
 	call := cast(proc "c" (_: ^ns.Object, _: ns.SEL) -> R)objc_msgSend
-	return call(object, ns.sel_registerName(selector))
+	return call(object, objcrt.sel_registerName(selector))
 }
 
 send_1 :: proc($R: typeid, object: ^ns.Object, selector: cstring, arg: $A) -> R {
 	call := cast(proc "c" (_: ^ns.Object, _: ns.SEL, _: A) -> R)objc_msgSend
-	return call(object, ns.sel_registerName(selector), arg)
+	return call(object, objcrt.sel_registerName(selector), arg)
 }
 
 send_2 :: proc($R: typeid, object: ^ns.Object, selector: cstring, first: $A, second: $B) -> R {
 	call := cast(proc "c" (_: ^ns.Object, _: ns.SEL, _: A, _: B) -> R)objc_msgSend
-	return call(object, ns.sel_registerName(selector), first, second)
+	return call(object, objcrt.sel_registerName(selector), first, second)
 }
 
 send_rect :: proc(object: ^ns.Object, selector: cstring) -> ns.Rect {
 	when ODIN_ARCH == .amd64 {
 		result: ns.Rect
 		call := cast(proc "c" (_: ^ns.Rect, _: ^ns.Object, _: ns.SEL))objc_msgSend_stret
-		call(&result, object, ns.sel_registerName(selector))
+		call(&result, object, objcrt.sel_registerName(selector))
 		return result
 	} else {
 		return send(ns.Rect, object, selector)
@@ -49,15 +50,15 @@ send_rect :: proc(object: ^ns.Object, selector: cstring) -> ns.Rect {
 
 notify_0 :: proc(object: ^ns.Object, selector: cstring) {
 	call := cast(proc "c" (_: ^ns.Object, _: ns.SEL))objc_msgSend
-	call(object, ns.sel_registerName(selector))
+	call(object, objcrt.sel_registerName(selector))
 }
 
 notify_1 :: proc(object: ^ns.Object, selector: cstring, arg: $A) {
 	call := cast(proc "c" (_: ^ns.Object, _: ns.SEL, _: A))objc_msgSend
-	call(object, ns.sel_registerName(selector), arg)
+	call(object, objcrt.sel_registerName(selector), arg)
 }
 
 notify_2 :: proc(object: ^ns.Object, selector: cstring, first: $A, second: $B) {
 	call := cast(proc "c" (_: ^ns.Object, _: ns.SEL, _: A, _: B))objc_msgSend
-	call(object, ns.sel_registerName(selector), first, second)
+	call(object, objcrt.sel_registerName(selector), first, second)
 }

@@ -1,6 +1,6 @@
 package main
 
-import ns "core:sys/darwin/Foundation"
+import ns "vendor:darwin/AppKit"
 import rl "vendor:raylib"
 
 foreign import core_graphics "system:CoreGraphics.framework"
