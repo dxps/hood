@@ -325,6 +325,10 @@ draw_shelf :: proc(
 ) -> (
 	result: Shelf_Frame,
 ) {
+	@(static) drag_pid: i32
+	@(static) drag_start: rl.Vector2
+	@(static) dragging: bool
+
 	layout := shelf_layout(settings, len(apps))
 	// Cocoa can report the pointer over a newly revealed window before GLFW
 	// receives a cursor-enter or motion event.
@@ -336,6 +340,82 @@ draw_shelf :: proc(
 	shelf_rect := rl.Rectangle{0, 0, f32(width), f32(height)}
 	roundness := min(1, 2 * f32(settings.corner_radius) / min(shelf_rect.width, shelf_rect.height))
 	rl.DrawRectangleRounded(shelf_rect, roundness, 12, rl.GetColor(settings.background_rgb << 8 | 0xFF))
+
+	hovered_index := -1
+	if !context_click && pointer_inside {
+		for _, index in apps {
+			size := f32(settings.icon_size)
+			offset := f32(layout.start + i32(index) * layout.step) - scroll
+			icon := rl.Rectangle{(f32(width) - size) / 2, offset, size, size}
+			if layout.horizontal {
+				icon = {offset, (f32(height) - size) / 2, size, size}
+			}
+			padding := min(4, f32(settings.icon_gap) / 2)
+			x_padding := min(padding, f32(settings.horizontal_margin))
+			y_padding := min(padding, f32(settings.vertical_margin))
+			row := rl.Rectangle{icon.x - x_padding, icon.y - y_padding, size + 2 * x_padding, size + 2 * y_padding}
+			if rl.CheckCollisionPointRec(mouse, row) {
+				hovered_index = index
+				break
+			}
+		}
+	}
+	if rl.IsMouseButtonPressed(.LEFT) && hovered_index >= 0 {
+		drag_pid = apps[hovered_index].pid
+		drag_start = mouse
+		dragging = false
+	}
+	if drag_pid != 0 && rl.IsMouseButtonDown(.LEFT) {
+		delta := mouse - drag_start
+		if !dragging && delta.x * delta.x + delta.y * delta.y >= 16 {
+			dragging = true
+		}
+		if dragging {
+			from := -1
+			for app, index in apps {
+				if app.pid == drag_pid {
+					from = index
+					break
+				}
+			}
+			if from < 0 {
+				drag_pid = 0
+				dragging = false
+			} else {
+				axis := mouse.y if !layout.horizontal else mouse.x
+				to := int(
+					(axis + scroll - f32(layout.start) - f32(settings.icon_size) / 2 + f32(layout.step) / 2) /
+					f32(layout.step),
+				)
+				to = clamp(to, 0, len(apps) - 1)
+				if from != to {
+					dragged := apps[from]
+					if from < to {
+						for index in from ..< to {
+							apps[index] = apps[index + 1]
+						}
+					} else {
+						for index := from; index > to; index -= 1 {
+							apps[index] = apps[index - 1]
+						}
+					}
+					apps[to] = dragged
+					hovered_index = to
+				}
+			}
+		}
+	}
+	was_dragging := dragging
+	if drag_pid != 0 && rl.IsMouseButtonReleased(.LEFT) {
+		if !dragging && hovered_index >= 0 && apps[hovered_index].pid == drag_pid {
+			result.clicked_pid = drag_pid
+		}
+		drag_pid = 0
+		dragging = false
+	} else if drag_pid != 0 && !rl.IsMouseButtonDown(.LEFT) {
+		drag_pid = 0
+		dragging = false
+	}
 
 	raised_icon: rl.Texture2D
 	raised_rect: rl.Rectangle
@@ -351,7 +431,7 @@ draw_shelf :: proc(
 		x_padding := min(padding, f32(settings.horizontal_margin))
 		y_padding := min(padding, f32(settings.vertical_margin))
 		row := rl.Rectangle{icon.x - x_padding, icon.y - y_padding, size + 2 * x_padding, size + 2 * y_padding}
-		hover := !context_click && pointer_inside && rl.CheckCollisionPointRec(mouse, row)
+		hover := !was_dragging && index == hovered_index
 		if hover {
 			result.hovered = app
 			result.tooltip_center = center
@@ -381,14 +461,16 @@ draw_shelf :: proc(
 			}
 			icon = {x, y, grown, grown}
 		}
-		if hover {
+		if was_dragging && app.pid == drag_pid {
+			icon.x = mouse.x - icon.width / 2
+			icon.y = mouse.y - icon.height / 2
+			raised_icon = app.icon
+			raised_rect = icon
+		} else if hover {
 			raised_icon = app.icon
 			raised_rect = icon
 		} else {
 			draw_app_icon(app.icon, icon)
-		}
-		if hover && rl.IsMouseButtonReleased(.LEFT) {
-			result.clicked_pid = app.pid
 		}
 	}
 	if raised_rect.width > 0 {

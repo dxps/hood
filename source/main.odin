@@ -86,8 +86,24 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App) -> i32 {
 		}
 		append(&next, App{pid, name, icon, hover_scale})
 	}
+	ordered: [dynamic]App
+	for previous in apps^ {
+		for &candidate in next {
+			if candidate.pid == previous.pid {
+				append(&ordered, candidate)
+				candidate = {}
+				break
+			}
+		}
+	}
+	for candidate in next {
+		if candidate.pid != 0 {
+			append(&ordered, candidate)
+		}
+	}
+	delete(next)
 	free_apps(apps^)
-	apps^ = next
+	apps^ = ordered
 	return send(i32, send(^ns.Object, workspace, "frontmostApplication"), "processIdentifier")
 }
 
