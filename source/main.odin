@@ -374,6 +374,8 @@ run_shelf :: proc() {
 	defer close_tooltip(&tooltip)
 	hovered_id: u64
 	hover_started: f64
+	last_pointer := ns.Point{-1e9, -1e9}
+	redraw_until: f64
 	startup_visible_until := rl.GetTime() + 2
 	for !rl.WindowShouldClose() {
 		// Raylib pumps Cocoa events on this thread, outside AppKit's usual run loop.
@@ -382,13 +384,15 @@ run_shelf :: proc() {
 		defer free_all(context.temp_allocator)
 
 		now := rl.GetTime()
+		redraw := false
 		if now >= next_app_refresh {
 			active_pid = refresh_apps(workspace, &apps, pinned_apps[:], app_order[:])
 			_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
 			if order_err != nil {
 				fmt.eprintfln("Could not save app order: %v", order_err)
 			}
-			next_app_refresh = now + (1.0 if visibility.hidden else 0.25)
+			next_app_refresh = now + 1.0
+			redraw = true
 		}
 		if now >= next_refresh {
 			if settings_process.pid != 0 {
@@ -403,10 +407,15 @@ run_shelf :: proc() {
 					settings_process = {}
 				}
 			}
+			old_frame := visibility.resting
 			visibility.resting, visibility.display = shelf_frames(window, len(apps), settings)
+			redraw = redraw || old_frame != visibility.resting || settings_process.pid != 0
 			next_refresh = now + 0.25
 		}
 
+		frontmost := send(i32, send(^ns.Object, workspace, "frontmostApplication"), "processIdentifier")
+		redraw = redraw || frontmost != active_pid
+		active_pid = frontmost
 		was_hidden := visibility.hidden
 		interactive := update_shelf_visibility(
 			window,
@@ -424,6 +433,23 @@ run_shelf :: proc() {
 		}
 		if was_hidden {
 			next_app_refresh = 0
+		}
+		pointer := send(ns.Point, window, "mouseLocationOutsideOfEventStream")
+		bounds := send_rect(window, "frame").size
+		pointer_inside := pointer.x >= 0 && pointer.y >= 0 && pointer.x < bounds.width && pointer.y < bounds.height
+		previous_inside := last_pointer.x >= 0 && last_pointer.y >= 0 && last_pointer.x < bounds.width && last_pointer.y < bounds.height
+		if (pointer != last_pointer && (pointer_inside || previous_inside)) || rl.IsMouseButtonDown(.LEFT) ||
+		   rl.IsMouseButtonReleased(.LEFT) || rl.IsMouseButtonReleased(.RIGHT) ||
+		   rl.GetMouseWheelMove() != 0 {
+			redraw_until = now + max(f64(settings.hover_animation_tenths) / 10, f64(settings.tooltip_delay_ms) / 1000) + 0.1
+		}
+		last_pointer = pointer
+		if !redraw && !was_hidden && now > redraw_until &&
+		   (visibility.progress == 0 || visibility.progress == 1) && !rl.IsKeyPressed(.ESCAPE) {
+			// Preserve the last frame; still pump input so clicks and reveal remain responsive.
+			rl.PollInputEvents()
+			time.sleep(40 * time.Millisecond)
+			continue
 		}
 		width, height := rl.GetScreenWidth(), rl.GetScreenHeight()
 		layout := shelf_layout(settings, len(apps))

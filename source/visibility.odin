@@ -111,7 +111,9 @@ update_shelf_visibility :: proc(window: ^ns.Object, state: ^Shelf_Visibility, se
 	if frame != send_rect(window, "frame") {
 		notify(window, "setFrame:display:", frame, ns.BOOL(true))
 	}
-	notify(window, "setAlphaValue:", ns.Float(eased))
+	if send(ns.Float, window, "alphaValue") != ns.Float(eased) {
+		notify(window, "setAlphaValue:", ns.Float(eased))
+	}
 	if state.hidden {
 		notify(window, "orderFrontRegardless")
 		state.hidden = false
