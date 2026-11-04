@@ -277,7 +277,16 @@ run_shelf :: proc() {
 				"runningApplicationWithProcessIdentifier:",
 				result.clicked_pid,
 			)
-			send(ns.BOOL, target, "activateWithOptions:", uint(0))
+			hidden := send(ns.BOOL, target, "isHidden")
+			active := send(ns.BOOL, target, "isActive") || result.clicked_pid == active_pid
+			if hidden {
+				send(ns.BOOL, target, "unhide")
+				send(ns.BOOL, target, "activateWithOptions:", uint(0))
+			} else if active {
+				send(ns.BOOL, target, "hide")
+			} else {
+				send(ns.BOOL, target, "activateWithOptions:", uint(0))
+			}
 		}
 		hovered := result.hovered
 		if hovered.pid != hovered_pid {
