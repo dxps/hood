@@ -91,7 +91,7 @@ load_pinned_app :: proc(workspace: ^ns.Object, identifier: string) -> (App, bool
 	}, true
 }
 
-refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned: []string) -> i32 {
+refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned, app_order: []string) -> i32 {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
@@ -163,6 +163,15 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned: []strin
 		append(&next, candidate)
 	}
 	ordered: [dynamic]App
+	for identifier in app_order {
+		for &candidate in next {
+			if candidate.bundle_id == identifier {
+				append(&ordered, candidate)
+				candidate = {}
+				break
+			}
+		}
+	}
 	for previous in apps^ {
 		for &candidate in next {
 			if candidate.order_id == previous.order_id {
@@ -173,7 +182,7 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned: []strin
 		}
 	}
 	for candidate in next {
-		if candidate.pid != 0 {
+		if candidate.order_id != 0 {
 			append(&ordered, candidate)
 		}
 	}
@@ -239,12 +248,13 @@ when !#config(HOOD_UI_MODULE, false) {
 
 run_shelf :: proc() {
 	home, home_err := os.user_home_dir(context.allocator)
-	config_dir, config_path, pinned_path: string
+	config_dir, config_path, pinned_path, order_path: string
 	settings := DEFAULT_SETTINGS
 	if home_err == nil {
 		config_dir = fmt.aprintf("%s/.config/hood", home)
 		config_path = fmt.aprintf("%s/hood.toml", config_dir)
 		pinned_path = fmt.aprintf("%s/pinned-apps", config_dir)
+		order_path = fmt.aprintf("%s/app-order", config_dir)
 		settings = load_settings(config_path)
 	}
 
@@ -255,6 +265,8 @@ run_shelf :: proc() {
 	executable, executable_err := os.get_executable_path(context.allocator)
 	pinned_apps := load_pinned_apps(pinned_path)
 	defer free_pinned_apps(pinned_apps)
+	app_order := load_pinned_apps(order_path)
+	defer free_pinned_apps(app_order)
 
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
@@ -312,7 +324,11 @@ run_shelf :: proc() {
 
 		now := rl.GetTime()
 		if now >= next_app_refresh {
-			active_pid = refresh_apps(workspace, &apps, pinned_apps[:])
+			active_pid = refresh_apps(workspace, &apps, pinned_apps[:], app_order[:])
+			_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
+			if order_err != nil {
+				fmt.eprintfln("Could not save app order: %v", order_err)
+			}
 			next_app_refresh = now + (1.0 if visibility.hidden else 0.25)
 		}
 		if now >= next_refresh {
@@ -364,6 +380,12 @@ run_shelf :: proc() {
 		}
 
 		result := ui_shelf(&ui, apps[:], settings, width, height, scroll, active_pid, context_click || !interactive)
+		if result.order_changed {
+			_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
+			if order_err != nil {
+				fmt.eprintfln("Could not save app order: %v", order_err)
+			}
+		}
 		menu_choice := Menu_Choice.None
 		if context_click {
 			context_app: ^App

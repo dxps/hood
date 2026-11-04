@@ -85,3 +85,54 @@ set_pinned_app :: proc(dir, path: string, pinned: ^[dynamic]string, identifier: 
 	pinned^ = next
 	return nil
 }
+
+sync_app_order :: proc(
+	dir, path: string,
+	order: ^[dynamic]string,
+	apps: []App,
+) -> (changed: bool, err: os.Error) {
+	visible: [dynamic]string
+	defer delete(visible)
+	for app in apps {
+		if app.bundle_id != "" && pinned_app_index(visible[:], app.bundle_id) < 0 {
+			append(&visible, app.bundle_id)
+		}
+	}
+
+	next: [dynamic]string
+	visible_index := 0
+	for identifier in order^ {
+		if pinned_app_index(visible[:], identifier) >= 0 {
+			append(&next, strings.clone(visible[visible_index]))
+			visible_index += 1
+		} else {
+			append(&next, strings.clone(identifier))
+		}
+	}
+	for visible_index < len(visible) {
+		append(&next, strings.clone(visible[visible_index]))
+		visible_index += 1
+	}
+
+	changed = len(next) != len(order^)
+	if !changed {
+		for identifier, index in next {
+			if identifier != order^[index] {
+				changed = true
+				break
+			}
+		}
+	}
+	if !changed {
+		free_pinned_apps(next)
+		return false, nil
+	}
+	err = save_pinned_apps(dir, path, next[:])
+	if err != nil {
+		free_pinned_apps(next)
+		return true, err
+	}
+	free_pinned_apps(order^)
+	order^ = next
+	return true, nil
+}

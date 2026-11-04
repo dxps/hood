@@ -46,7 +46,8 @@ Changes apply while Settings is open and are saved automatically to
 
 Right-click an app icon and choose **Keep in Dock** to keep it available after
 the app quits. The checked item can be selected again to remove it. Clicking a
-kept app that is not running launches it.
+kept app that is not running launches it. Dragged icon order is restored when
+Hood restarts; stopped apps in that order remain hidden unless they are kept.
 
 ```toml
 edge = "left"

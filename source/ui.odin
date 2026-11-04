@@ -401,6 +401,7 @@ draw_shelf :: proc(
 					}
 					apps[to] = dragged
 					hovered_index = to
+					result.order_changed = true
 				}
 			}
 		}

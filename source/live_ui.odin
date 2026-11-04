@@ -30,6 +30,7 @@ Shelf_Frame :: struct {
 	tooltip_center: rl.Vector2,
 	clicked_id:     u64,
 	pointed_id:     u64,
+	order_changed:  bool,
 }
 
 // Keep the module boundary here so changes to these signatures rebuild the host.
