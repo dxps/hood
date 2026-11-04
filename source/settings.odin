@@ -27,11 +27,12 @@ TOOLTIP_DELAYS_MS := [6]i32{0, 100, 250, 450, 750, 1000}
 
 DEFAULT_SETTINGS :: Settings {
 	icon_size              = 32,
-	background_rgb         = 0x1D1D20,
-	icon_gap               = 20,
-	horizontal_margin      = 18,
-	vertical_margin        = 14,
-	screen_edge_gap        = 8,
+	corner_radius          = 12,
+	background_rgb         = 0x474446,
+	icon_gap               = 8,
+	horizontal_margin      = 6,
+	vertical_margin        = 10,
+	screen_edge_gap        = 0,
 	animation_tenths       = 3,
 	tooltip_delay_ms       = 100,
 	magnification_percent  = 60,

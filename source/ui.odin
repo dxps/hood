@@ -356,7 +356,7 @@ draw_shelf :: proc(
 			result.hovered = app
 			result.tooltip_center = center
 		}
-		if hover || app.pid == active_pid {
+		if app.pid == active_pid {
 			rl.DrawRectangleRounded(row, 0.24, 8, {63, 63, 69, 255})
 		}
 		target: f32 = 1 if hover && settings.magnification_percent > 0 else 0
