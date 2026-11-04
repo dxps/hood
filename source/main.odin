@@ -3,6 +3,8 @@ package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import cf "core:sys/darwin/CoreFoundation"
+import cg "core:sys/darwin/CoreGraphics"
 import objcrt "core:sys/darwin/ObjectiveC"
 import ns "vendor:darwin/AppKit"
 import "core:time"
@@ -60,6 +62,47 @@ cocoa_window :: proc() -> ^ns.Object {
 		window = send(^ns.Object, window, "window")
 	}
 	return window
+}
+
+application_has_visible_window :: proc(pid: i32) -> bool {
+	windows := cg.WindowListCopyWindowInfo(.OnScreenOnly, 0)
+	if windows == nil {
+		return true
+	}
+	defer cf.Release(cast(cf.TypeRef)windows)
+	for index in 0 ..< cf.ArrayGetCount(windows) {
+		info := cast(cf.DictionaryRef)cf.ArrayGetValueAtIndex(windows, index)
+		owner_value := cast(cf.NumberRef)cf.DictionaryGetValue(info, cg.WindowOwnerPID)
+		layer_value := cast(cf.NumberRef)cf.DictionaryGetValue(info, cg.WindowLayer)
+		if owner_value == nil || layer_value == nil {
+			continue
+		}
+		owner, layer: i32
+		if !cf.NumberGetValue(owner_value, .SInt32Type, &owner) ||
+		   !cf.NumberGetValue(layer_value, .SInt32Type, &layer) {
+			continue
+		}
+		if owner == pid && layer == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+reopen_application :: proc(workspace: ^ns.Object, bundle_id: string) {
+	if bundle_id == "" {
+		return
+	}
+	identifier := send(
+		^ns.Object,
+		native_class("NSString"),
+		"stringWithUTF8String:",
+		strings.clone_to_cstring(bundle_id, context.temp_allocator),
+	)
+	url := send(^ns.Object, workspace, "URLForApplicationWithBundleIdentifier:", identifier)
+	if url != nil {
+		send(ns.BOOL, workspace, "openURL:", url)
+	}
 }
 
 app_bundle_identifier :: proc(app: ^ns.Object) -> string {
@@ -424,13 +467,18 @@ run_shelf :: proc() {
 				)
 				hidden := send(ns.BOOL, target, "isHidden")
 				active := send(ns.BOOL, target, "isActive") || clicked.pid == active_pid
+				visible := application_has_visible_window(clicked.pid)
+				activate_all := ns.ApplicationActivationOptions{.ActivateAllWindows}
 				if hidden {
 					send(ns.BOOL, target, "unhide")
-					send(ns.BOOL, target, "activateWithOptions:", uint(0))
-				} else if active {
+					send(ns.BOOL, target, "activateWithOptions:", activate_all)
+				} else if active && visible {
 					send(ns.BOOL, target, "hide")
 				} else {
-					send(ns.BOOL, target, "activateWithOptions:", uint(0))
+					if !visible {
+						reopen_application(workspace, clicked.bundle_id)
+					}
+					send(ns.BOOL, target, "activateWithOptions:", activate_all)
 				}
 			} else if clicked != nil && clicked.bundle_id != "" {
 				identifier := send(
