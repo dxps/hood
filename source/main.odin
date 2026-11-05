@@ -327,7 +327,6 @@ run_shelf :: proc() {
 		return
 	}
 	executable, executable_err := os.get_executable_path(context.allocator)
-	settings_executable := fmt.aprintf("%s Settings", executable) if executable_err == nil else ""
 	pinned_apps := load_pinned_apps(pinned_path)
 	defer free_pinned_apps(pinned_apps)
 	app_order := load_pinned_apps(order_path)
@@ -562,7 +561,7 @@ run_shelf :: proc() {
 				send(ns.BOOL, target, "activateWithOptions:", uint(0))
 			} else if executable_err == nil {
 				err: os.Error
-				settings_process, err = os.process_start({command = {settings_executable, "--settings"}, stderr = os.stderr})
+				settings_process, err = os.process_start({command = {executable, "--settings"}, stderr = os.stderr})
 				if err != nil {
 					fmt.eprintfln("Could not open Hood Settings: %v", err)
 				} else {

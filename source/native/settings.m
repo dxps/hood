@@ -338,6 +338,7 @@ static NSBox *hood_separator(void) {
 @end
 
 void *hood_settings_create(const HoodSettingsState *state, int bundled, int loginAvailable, int loginEnabled, int loginPending) {
+    NSProcessInfo.processInfo.processName = @"Hood Settings";
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     [NSApp finishLaunching];

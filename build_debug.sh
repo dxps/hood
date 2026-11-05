@@ -14,4 +14,6 @@ if [[ ${1:-} == "--live-ui" ]]; then
 fi
 odin build source ${flags[@]+"${flags[@]}"} -out:"$staging/hood" -strict-style -vet -min-link-libs -debug
 mv "$staging/hood" "$output"
-cp "$output" "$output Settings"
+# Remove the obsolete helper produced by older builds. Settings now renames the
+# shared process through NSProcessInfo instead of shipping a second executable.
+rm -f "$output Settings"

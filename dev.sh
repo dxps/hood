@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 mkdir -p build/debug
 session=$(mktemp -d "$PWD/build/debug/.live.XXXXXX")
 export HOOD_UI_MANIFEST="$session/current"
-# The build also creates a sibling "hood Settings" executable for the Settings process.
+# Settings launches this same executable. Keep it separate from standalone builds.
 executable="$session/hood"
 app_pid=
 stop_app() {
