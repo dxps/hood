@@ -342,7 +342,7 @@ static NSBox *hood_separator(void) {
     quit.layer.cornerRadius = 6;
     quit.contentTintColor = NSColor.whiteColor;
     quit.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
-    quit.frame = NSMakeRect(360, 246, 120, 32);
+    quit.frame = NSMakeRect(370, 247, 110, 28);
     [view addSubview:quit];
     return view;
 }
