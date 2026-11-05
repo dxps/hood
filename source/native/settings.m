@@ -36,6 +36,78 @@ enum {
     HoodQuit,
 };
 
+@interface HoodFastTooltipButton : NSButton
+@property (nonatomic, copy) NSString *fastToolTip;
+@property NSTrackingArea *hoverTrackingArea;
+@property NSPanel *fastToolTipWindow;
+@end
+
+@implementation HoodFastTooltipButton
+- (void)setFastToolTip:(NSString *)fastToolTip {
+    _fastToolTip = [fastToolTip copy];
+    if (!_fastToolTip) {
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showFastToolTip) object:nil];
+        [self.fastToolTipWindow orderOut:nil];
+    }
+}
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    if (self.hoverTrackingArea) [self removeTrackingArea:self.hoverTrackingArea];
+    self.hoverTrackingArea = [[NSTrackingArea alloc] initWithRect:NSZeroRect
+        options:NSTrackingMouseEnteredAndExited|NSTrackingActiveAlways|NSTrackingInVisibleRect
+        owner:self userInfo:nil];
+    [self addTrackingArea:self.hoverTrackingArea];
+}
+- (void)mouseEntered:(NSEvent *)event {
+    (void)event;
+    if (self.fastToolTip) [self performSelector:@selector(showFastToolTip) withObject:nil afterDelay:0.2];
+}
+- (void)mouseExited:(NSEvent *)event {
+    (void)event;
+    [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(showFastToolTip) object:nil];
+    [self.fastToolTipWindow orderOut:nil];
+}
+- (void)showFastToolTip {
+    if (!self.fastToolTip || !self.window) return;
+    NSFont *font = [NSFont menuFontOfSize:12];
+    NSDictionary *attributes = @{NSFontAttributeName:font};
+    CGFloat width = ceil([self.fastToolTip sizeWithAttributes:attributes].width) + 18;
+    CGFloat height = 24;
+    if (!self.fastToolTipWindow) {
+        self.fastToolTipWindow = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, width, height)
+            styleMask:NSWindowStyleMaskBorderless|NSWindowStyleMaskNonactivatingPanel
+            backing:NSBackingStoreBuffered defer:NO];
+        self.fastToolTipWindow.opaque = NO;
+        self.fastToolTipWindow.backgroundColor = NSColor.clearColor;
+        self.fastToolTipWindow.ignoresMouseEvents = YES;
+        self.fastToolTipWindow.hasShadow = YES;
+        self.fastToolTipWindow.level = NSPopUpMenuWindowLevel;
+        self.fastToolTipWindow.contentView.wantsLayer = YES;
+        self.fastToolTipWindow.contentView.layer.cornerRadius = 6;
+        self.fastToolTipWindow.contentView.layer.backgroundColor = NSColor.controlBackgroundColor.CGColor;
+        NSTextField *label = [NSTextField labelWithString:@""];
+        label.tag = 1;
+        label.alignment = NSTextAlignmentCenter;
+        label.font = font;
+        label.textColor = NSColor.labelColor;
+        [self.fastToolTipWindow.contentView addSubview:label];
+    }
+    NSTextField *label = (NSTextField *)[self.fastToolTipWindow.contentView viewWithTag:1];
+    label.stringValue = self.fastToolTip;
+    label.frame = NSMakeRect(9, 4, width - 18, 16);
+    NSRect frame = self.fastToolTipWindow.frame;
+    frame.size = NSMakeSize(width, height);
+    NSRect button = [self.window convertRectToScreen:[self convertRect:self.bounds toView:nil]];
+    NSRect available = self.window.screen.visibleFrame;
+    frame.origin.x = NSMidX(button) - width / 2;
+    frame.origin.y = NSMinY(button) - height - 5;
+    frame.origin.x = MAX(NSMinX(available), MIN(frame.origin.x, NSMaxX(available) - width));
+    frame.origin.y = MAX(NSMinY(available), MIN(frame.origin.y, NSMaxY(available) - height));
+    [self.fastToolTipWindow setFrame:frame display:YES];
+    [self.fastToolTipWindow orderFrontRegardless];
+}
+@end
+
 @interface HoodSettingsController : NSObject <NSWindowDelegate>
 @property HoodSettingsState state;
 @property HoodSettingsEvents events;
@@ -211,31 +283,46 @@ static NSBox *hood_separator(void) {
 
 - (NSView *)runtimeViewBundled:(BOOL)bundled loginAvailable:(BOOL)loginAvailable {
     NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 620)];
-    self.memoryLabel = hood_label(@"Memory usage: unavailable");
-    self.memoryLabel.frame = NSMakeRect(20, 560, 460, 22);
-    self.memoryLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
-    [view addSubview:self.memoryLabel];
-
-    NSTextField *detail = hood_label(@"Includes graphics memory. Updates every second.");
-    detail.frame = NSMakeRect(20, 532, 460, 20);
-    detail.textColor = NSColor.secondaryLabelColor;
-    [view addSubview:detail];
-
-    self.loginButton = [NSButton checkboxWithTitle:@"Launch at login" target:self action:@selector(runtimeAction:)];
+    self.loginButton = [[HoodFastTooltipButton alloc] initWithFrame:NSZeroRect];
+    self.loginButton.buttonType = NSButtonTypeSwitch;
+    self.loginButton.title = @"Launch at login";
+    self.loginButton.target = self;
+    self.loginButton.action = @selector(runtimeAction:);
     self.loginButton.tag = HoodLogin;
-    self.loginButton.frame = NSMakeRect(20, 476, 250, 24);
+    self.loginButton.frame = NSMakeRect(20, 560, 250, 24);
     self.loginButton.enabled = bundled && loginAvailable;
+    ((HoodFastTooltipButton *)self.loginButton).fastToolTip = self.loginButton.enabled ? nil : @"Available when running Hood.app.";
     [view addSubview:self.loginButton];
 
+    NSTextField *loginDetail = hood_label(@"Start it automatically at login time.");
+    loginDetail.frame = NSMakeRect(20, 532, 460, 20);
+    loginDetail.textColor = NSColor.secondaryLabelColor;
+    [view addSubview:loginDetail];
+
     self.loginStatus = hood_label(@"");
-    self.loginStatus.frame = NSMakeRect(20, 446, 460, 20);
+    self.loginStatus.frame = NSMakeRect(20, 504, 460, 20);
     self.loginStatus.textColor = NSColor.secondaryLabelColor;
     [view addSubview:self.loginStatus];
 
-    NSButton *quit = [NSButton buttonWithTitle:@"Quit Hood" target:self action:@selector(runtimeAction:)];
+    self.memoryLabel = hood_label(@"Memory usage: unavailable");
+    self.memoryLabel.frame = NSMakeRect(20, 442, 460, 22);
+    self.memoryLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+    [view addSubview:self.memoryLabel];
+
+    NSTextField *memoryDetail = hood_label(@"Includes graphics memory. Updates every second.");
+    memoryDetail.frame = NSMakeRect(20, 414, 460, 20);
+    memoryDetail.textColor = NSColor.secondaryLabelColor;
+    [view addSubview:memoryDetail];
+
+    NSButton *quit = [NSButton buttonWithTitle:@"Quit the dock" target:self action:@selector(runtimeAction:)];
     quit.tag = HoodQuit;
-    quit.bezelStyle = NSBezelStyleRounded;
-    quit.frame = NSMakeRect(20, 382, 100, 32);
+    quit.bordered = NO;
+    quit.wantsLayer = YES;
+    quit.layer.backgroundColor = NSColor.systemRedColor.CGColor;
+    quit.layer.cornerRadius = 6;
+    quit.contentTintColor = NSColor.whiteColor;
+    quit.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+    quit.frame = NSMakeRect(360, 350, 120, 32);
     [view addSubview:quit];
     return view;
 }
@@ -419,11 +506,10 @@ void hood_settings_set_runtime(void *handle, uint64_t memoryBytes, int available
         ? [NSString stringWithFormat:@"Memory usage: %.1f MB", memoryBytes / 1000000.0]
         : @"Memory usage: unavailable";
     controller.loginButton.enabled = bundled && loginAvailable;
+    ((HoodFastTooltipButton *)controller.loginButton).fastToolTip = controller.loginButton.enabled ? nil : @"Available when running Hood.app.";
     controller.loginButton.state = loginEnabled || loginPending ? NSControlStateValueOn : NSControlStateValueOff;
     controller.loginStatus.textColor = loginFailed ? NSColor.systemRedColor : NSColor.secondaryLabelColor;
-    if (!bundled) controller.loginStatus.stringValue = @"Available when running Hood.app.";
-    else if (loginFailed) controller.loginStatus.stringValue = @"Could not update login item.";
+    if (loginFailed) controller.loginStatus.stringValue = @"Could not update login item.";
     else if (loginPending) controller.loginStatus.stringValue = @"Allow Hood in System Settings > Login Items.";
-    else if (!loginAvailable) controller.loginStatus.stringValue = @"Launch at login is unavailable on this Mac.";
-    else controller.loginStatus.stringValue = @"Automatically starts Hood when you log in.";
+    else controller.loginStatus.stringValue = @"";
 }
