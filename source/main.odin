@@ -10,8 +10,8 @@ import ns "vendor:darwin/AppKit"
 import rl "vendor:raylib"
 
 Shelf_Layout :: struct {
-	horizontal:                     bool,
-	length, thickness, start, step: i32,
+	horizontal:                                      bool,
+	length, thickness, shelf_thickness, start, step: i32,
 }
 
 shelf_layout :: proc(settings: Settings, count: int) -> Shelf_Layout {
@@ -21,16 +21,21 @@ shelf_layout :: proc(settings: Settings, count: int) -> Shelf_Layout {
 	step := settings.icon_size + settings.icon_gap
 	length := 2 * along + settings.icon_size + i32(max(0, count - 1)) * step
 	start := along
-	thickness := settings.icon_size + 2 * across
+	shelf_thickness := settings.icon_size + 2 * across
+	thickness := shelf_thickness
 	if settings.magnification_percent > 0 {
 		grown := (settings.icon_size * (100 + settings.magnification_percent) + 99) / 100
-		thickness = max(thickness, grown)
+		lift := (settings.icon_size * 45 + 99) / 100 if settings.hover_wave else 0
+		// Keep an inward, transparent canvas around the shelf. The background
+		// remains shelf_thickness wide while magnified icons use this extra room.
+		overflow := max(0, (grown - settings.icon_size + 1) / 2 + lift - across)
+		thickness += overflow
 		if length < grown {
 			start += (grown - length) / 2
 			length = grown
 		}
 	}
-	return {horizontal, length, thickness, start, step}
+	return {horizontal, length, thickness, shelf_thickness, start, step}
 }
 
 App :: struct {
@@ -461,7 +466,7 @@ run_shelf :: proc() {
 			break
 		}
 
-		result := ui_shelf(&ui, window, &input, f32(delta), apps[:], settings, width, height, scroll, active_pid, context_click || !interactive)
+		result := ui_shelf(&ui, window, &input, f32(delta), apps[:], settings, width, height, scroll, context_click || !interactive)
 		if result.order_changed {
 			_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
 			if order_err != nil {

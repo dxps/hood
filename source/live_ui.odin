@@ -22,7 +22,7 @@ Settings_Dropdown :: enum {
 }
 
 settings_height :: proc(settings: Settings) -> i32 {
-	return 736 + (90 if settings.auto_hide else 0)
+	return 776 + (90 if settings.auto_hide else 0)
 }
 
 Shelf_Frame :: struct {
@@ -43,10 +43,9 @@ hood_draw_shelf :: proc(
 	settings: Settings,
 	width, height: i32,
 	scroll: f32,
-	active_pid: i32,
 	context_click: bool,
 ) -> Shelf_Frame {
-	return draw_shelf(window, input, delta, apps, settings, width, height, scroll, active_pid, context_click)
+	return draw_shelf(window, input, delta, apps, settings, width, height, scroll, context_click)
 }
 
 @(export)
@@ -136,12 +135,11 @@ ui_shelf :: proc(
 	settings: Settings,
 	width, height: i32,
 	scroll: f32,
-	active_pid: i32,
 	context_click: bool,
 ) -> Shelf_Frame {
 	refresh_live_ui(ui)
 	draw := ui.shelf if ui.shelf != nil else hood_draw_shelf
-	return draw(window, input, delta, apps, settings, width, height, scroll, active_pid, context_click)
+	return draw(window, input, delta, apps, settings, width, height, scroll, context_click)
 }
 
 ui_settings :: proc(

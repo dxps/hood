@@ -124,6 +124,22 @@ stepper_row :: proc(theme: Settings_Theme, label: cstring, y: i32, value: ^i32, 
 	draw_text(label_value, i32(center - text_width(label_value, 16) / 2), y + 8, 16, theme.text)
 }
 
+checkbox_row :: proc(theme: Settings_Theme, label: cstring, y: i32, value: ^bool, enabled: bool) {
+	row := rl.Rectangle{20, f32(y), SETTINGS_CONTROL_RIGHT - 20, 32}
+	hover := enabled && rl.CheckCollisionPointRec(rl.GetMousePosition(), row)
+	box := rl.Rectangle{SETTINGS_CONTROL_LEFT, f32(y + 6), 20, 20}
+	rl.DrawRectangleRounded(box, 0.25, 8, theme.hover if hover else theme.button)
+	rl.DrawRectangleRoundedLinesEx(box, 0.25, 8, 1, theme.popup_border)
+	if value^ {
+		rl.DrawLineEx({box.x + 4, box.y + 10}, {box.x + 8, box.y + 15}, 2, theme.text)
+		rl.DrawLineEx({box.x + 8, box.y + 15}, {box.x + 16, box.y + 5}, 2, theme.text)
+	}
+	draw_text(label, 20, y + 8, 16, theme.text)
+	if hover && rl.IsMouseButtonReleased(.LEFT) {
+		value^ = !value^
+	}
+}
+
 dropdown_button :: proc(theme: Settings_Theme, dropdown: ^Settings_Dropdown, kind: Settings_Dropdown, y: i32, label: cstring) {
 	top := f32(y)
 	if ui_button(theme, {SETTINGS_CONTROL_LEFT, top, SETTINGS_DROPDOWN_WIDTH, 32}, label, left_padding = 16) &&
@@ -268,20 +284,21 @@ settings_view :: proc(
 	rl.DrawLine(20, 192 + offset, SETTINGS_CONTROL_RIGHT, 192 + offset, theme.popup_border)
 	draw_text("Icons", 20, 205 + offset, 20, theme.text)
 	stepper_row(theme, "Size", 234 + offset, &draft.icon_size, MIN_ICON_SIZE, MAX_ICON_SIZE, 4, !was_open)
-	draw_text("Magnification size", 20, 282 + offset, 16, theme.text)
-	dropdown_button(theme, dropdown, .Hover_Magnification, 274 + offset, magnification_labels[magnification_choice])
-	draw_text("Magnification animation", 20, 322 + offset, 16, theme.text)
-	dropdown_button(theme, dropdown, .Hover_Animation, 314 + offset, animation_labels[draft.hover_animation_tenths])
+	checkbox_row(theme, "Magnification with wave effect", 274 + offset, &draft.hover_wave, !was_open)
+	draw_text("Magnification size", 20, 322 + offset, 16, theme.text)
+	dropdown_button(theme, dropdown, .Hover_Magnification, 314 + offset, magnification_labels[magnification_choice])
+	draw_text("Magnification animation", 20, 362 + offset, 16, theme.text)
+	dropdown_button(theme, dropdown, .Hover_Animation, 354 + offset, animation_labels[draft.hover_animation_tenths])
 
-	rl.DrawLine(20, 356 + offset, SETTINGS_CONTROL_RIGHT, 356 + offset, theme.popup_border)
-	draw_text("Spacing", 20, 370 + offset, 20, theme.text)
-	stepper_row(theme, "Between icons", 402 + offset, &draft.icon_gap, 0, MAX_ICON_SPACING, 2, !was_open)
-	stepper_row(theme, "Left / right margins", 446 + offset, &draft.horizontal_margin, 0, MAX_ICON_SPACING, 2, !was_open)
-	stepper_row(theme, "Top / bottom margins", 490 + offset, &draft.vertical_margin, 0, MAX_ICON_SPACING, 2, !was_open)
+	rl.DrawLine(20, 396 + offset, SETTINGS_CONTROL_RIGHT, 396 + offset, theme.popup_border)
+	draw_text("Spacing", 20, 410 + offset, 20, theme.text)
+	stepper_row(theme, "Between icons", 442 + offset, &draft.icon_gap, 0, MAX_ICON_SPACING, 2, !was_open)
+	stepper_row(theme, "Left / right margins", 486 + offset, &draft.horizontal_margin, 0, MAX_ICON_SPACING, 2, !was_open)
+	stepper_row(theme, "Top / bottom margins", 530 + offset, &draft.vertical_margin, 0, MAX_ICON_SPACING, 2, !was_open)
 	stepper_row(
 		theme,
 		"Between Dock and screen edge",
-		530 + offset,
+		570 + offset,
 		&draft.screen_edge_gap,
 		0,
 		MAX_SCREEN_EDGE_GAP,
@@ -289,9 +306,9 @@ settings_view :: proc(
 		!was_open,
 	)
 	if failed {
-		draw_text("Could not save hood.toml", 20, 568 + offset, 16, theme.error)
+		draw_text("Could not save hood.toml", 20, 608 + offset, 16, theme.error)
 	}
-	done = ui_button(theme, {SETTINGS_DROPDOWN_RIGHT - 74, f32(584 + offset), 74, 32}, "OK") && !was_open
+	done = ui_button(theme, {SETTINGS_DROPDOWN_RIGHT - 74, f32(624 + offset), 74, 32}, "OK") && !was_open
 	if dropdown^ != .None {
 		switch dropdown^ {
 		case .None:
@@ -315,14 +332,14 @@ settings_view :: proc(
 				draft.show_hide_delay_ms = SHOW_HIDE_DELAYS_MS[choice]
 			}
 		case .Hover_Magnification:
-			if choice := dropdown_popup(theme, 310 + offset, magnification_labels[:], magnification_choice, was_open);
+			if choice := dropdown_popup(theme, 350 + offset, magnification_labels[:], magnification_choice, was_open);
 			   choice >= 0 {
 				draft.magnification_percent = MAGNIFICATION_PERCENTS[choice]
 			}
 		case .Hover_Animation:
 			if choice := dropdown_popup(
 				theme,
-				350 + offset,
+				390 + offset,
 				animation_labels[1:MAX_MAGNIFICATION_ANIMATION_TENTHS + 1],
 				int(draft.hover_animation_tenths - 1),
 				was_open,
@@ -346,6 +363,43 @@ settings_view :: proc(
 	return
 }
 
+wave_icon_rect :: proc(
+	icon: rl.Rectangle,
+	progress: f32,
+	settings: Settings,
+	layout: Shelf_Layout,
+	width, height: i32,
+) -> rl.Rectangle {
+	if progress <= 0 {
+		return icon
+	}
+	eased := progress * progress * (3 - 2 * progress)
+	size := icon.width
+	center := rl.Vector2{icon.x + size / 2, icon.y + size / 2}
+	growth := f32(settings.magnification_percent) / 100
+	grown := size * (1 + growth * eased)
+	x, y := center.x - grown / 2, center.y - grown / 2
+	// Keep magnification inside the scroll viewport along the shelf. Across the
+	// shelf it is intentionally allowed to rise into the transparent canvas.
+	if layout.horizontal && icon.x >= 0 && icon.x + size <= f32(width) {
+		x = clamp(x, 0, f32(width) - grown)
+	} else if !layout.horizontal && icon.y >= 0 && icon.y + size <= f32(height) {
+		y = clamp(y, 0, f32(height) - grown)
+	}
+	lift := size * 0.45 * eased if settings.hover_wave else 0
+	switch settings.edge {
+	case .Left:
+		x += lift
+	case .Right:
+		x -= lift
+	case .Bottom:
+		y -= lift
+	case .Top:
+		y += lift
+	}
+	return {x, y, grown, grown}
+}
+
 draw_shelf :: proc(
 	window: ^ns.Object,
 	input: ^Native_Input,
@@ -354,7 +408,6 @@ draw_shelf :: proc(
 	settings: Settings,
 	width, height: i32,
 	scroll: f32,
-	active_pid: i32,
 	context_click: bool,
 ) -> (
 	result: Shelf_Frame,
@@ -369,16 +422,37 @@ draw_shelf :: proc(
 	pointer := send(ns.Point, window, "mouseLocationOutsideOfEventStream")
 	mouse := rl.Vector2{f32(pointer.x), f32(height) - f32(pointer.y)}
 	pointer_inside := mouse.x >= 0 && mouse.x < f32(width) && mouse.y >= 0 && mouse.y < f32(height)
-	hood_begin(window, settings.background_rgb, f64(settings.corner_radius))
+	shelf_x, shelf_y: f32
+	shelf_width, shelf_height := f32(width), f32(height)
+	if layout.horizontal {
+		shelf_height = f32(layout.shelf_thickness)
+		if settings.edge == .Bottom {
+			shelf_y = f32(height) - shelf_height
+		}
+	} else {
+		shelf_width = f32(layout.shelf_thickness)
+		if settings.edge == .Right {
+			shelf_x = f32(width) - shelf_width
+		}
+	}
+	hood_begin(
+		window,
+		settings.background_rgb,
+		f64(settings.corner_radius),
+		shelf_x,
+		shelf_y,
+		shelf_width,
+		shelf_height,
+	)
 
 	hovered_index := -1
 	if pointer_inside {
 		for _, index in apps {
 			size := f32(settings.icon_size)
 			offset := f32(layout.start + i32(index) * layout.step) - scroll
-			icon := rl.Rectangle{(f32(width) - size) / 2, offset, size, size}
+			icon := rl.Rectangle{shelf_x + (shelf_width - size) / 2, offset, size, size}
 			if layout.horizontal {
-				icon = {offset, (f32(height) - size) / 2, size, size}
+				icon = {offset, shelf_y + (shelf_height - size) / 2, size, size}
 			}
 			padding := min(4, f32(settings.icon_gap) / 2)
 			x_padding := min(padding, f32(settings.horizontal_margin))
@@ -387,6 +461,21 @@ draw_shelf :: proc(
 			if rl.CheckCollisionPointRec(mouse, row) {
 				hovered_index = index
 				break
+			}
+		}
+		// Once an icon has risen beyond the shelf, keep it interactive there.
+		if hovered_index < 0 {
+			for app, index in apps {
+				size := f32(settings.icon_size)
+				offset := f32(layout.start + i32(index) * layout.step) - scroll
+				icon := rl.Rectangle{shelf_x + (shelf_width - size) / 2, offset, size, size}
+				if layout.horizontal {
+					icon = {offset, shelf_y + (shelf_height - size) / 2, size, size}
+				}
+				if app.hover_scale > 0 && rl.CheckCollisionPointRec(mouse, wave_icon_rect(icon, app.hover_scale, settings, layout, width, height)) {
+					hovered_index = index
+					break
+				}
 			}
 		}
 	}
@@ -453,15 +542,11 @@ draw_shelf :: proc(
 	for &app, index in apps {
 		size := f32(settings.icon_size)
 		offset := f32(layout.start + i32(index) * layout.step) - scroll
-		icon := rl.Rectangle{(f32(width) - size) / 2, offset, size, size}
+		icon := rl.Rectangle{shelf_x + (shelf_width - size) / 2, offset, size, size}
 		if layout.horizontal {
-			icon = {offset, (f32(height) - size) / 2, size, size}
+			icon = {offset, shelf_y + (shelf_height - size) / 2, size, size}
 		}
 		center := rl.Vector2{icon.x + size / 2, icon.y + size / 2}
-		padding := min(4, f32(settings.icon_gap) / 2)
-		x_padding := min(padding, f32(settings.horizontal_margin))
-		y_padding := min(padding, f32(settings.vertical_margin))
-		row := rl.Rectangle{icon.x - x_padding, icon.y - y_padding, size + 2 * x_padding, size + 2 * y_padding}
 		hover := !context_click && !was_dragging && index == hovered_index
 		if index == hovered_index {
 			result.pointed_id = app.order_id
@@ -470,30 +555,31 @@ draw_shelf :: proc(
 			result.hovered = app
 			result.tooltip_center = center
 		}
-		if app.pid == active_pid {
-			hood_highlight(window, row.x, row.y, row.width, row.height)
+		target: f32
+		if !context_click && !was_dragging && hovered_index >= 0 && settings.magnification_percent > 0 {
+			distance := abs(index - hovered_index)
+			switch distance {
+			case 0:
+				target = 1
+			case 1:
+				if settings.hover_wave {
+					target = 0.42
+				}
+			case 2:
+				if settings.hover_wave {
+					target = 0.12
+				}
+			}
 		}
-		target: f32 = 1 if hover && settings.magnification_percent > 0 else 0
 		if settings.magnification_percent > 0 && settings.hover_animation_tenths > 0 {
 			step := delta * 10 / f32(settings.hover_animation_tenths)
 			app.hover_scale += clamp(target - app.hover_scale, -step, step)
 		} else {
 			app.hover_scale = target
 		}
-		if app.hover_scale > 0 {
-			progress := app.hover_scale
-			eased := progress * progress * (3 - 2 * progress)
-			growth := f32(settings.magnification_percent) / 100
-			grown := min(size * (1 + growth * eased), f32(min(width, height)))
-			x, y := center.x - grown / 2, center.y - grown / 2
-			// A partially scrolled icon keeps its center while it grows.
-			if icon.x >= 0 && icon.x + size <= f32(width) {
-				x = clamp(x, 0, f32(width) - grown)
-			}
-			if icon.y >= 0 && icon.y + size <= f32(height) {
-				y = clamp(y, 0, f32(height) - grown)
-			}
-			icon = {x, y, grown, grown}
+		icon = wave_icon_rect(icon, app.hover_scale, settings, layout, width, height)
+		if hover {
+			result.tooltip_center = {icon.x + icon.width / 2, icon.y + icon.height / 2}
 		}
 		if was_dragging && app.order_id == drag_id {
 			icon.x = mouse.x - icon.width / 2

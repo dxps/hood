@@ -11,7 +11,7 @@ typedef struct { int32_t pressed, released, down, right, escape; double wheel; }
 @end
 @interface HoodPanel : NSPanel
 @property NSMutableArray<CALayer *> *items;
-@property CALayer *highlight;
+@property CALayer *background;
 @property NSUInteger cursor;
 @end
 @implementation HoodPanel
@@ -32,10 +32,8 @@ void *hood_create(void) {
     w.contentView.wantsLayer=YES;
     w.contentView.layer.masksToBounds=YES;
     w.items=[NSMutableArray array];
-    w.highlight=[CALayer layer];
-    w.highlight.cornerRadius=5;
-    w.highlight.backgroundColor=[NSColor colorWithSRGBRed:63/255.0 green:63/255.0 blue:69/255.0 alpha:1].CGColor;
-    [w.contentView.layer addSublayer:w.highlight];
+    w.background=[CALayer layer];
+    [w.contentView.layer addSublayer:w.background];
     [w orderFrontRegardless];
     return (__bridge_retained void *)w;
 }
@@ -63,18 +61,14 @@ void hood_poll(void *handle, HoodInput *input, double wait) {
     input->down=([NSEvent pressedMouseButtons]&1)!=0;
     [NSApp updateWindows];
 }
-void hood_begin(void *handle, uint32_t rgb, double radius) {
+void hood_begin(void *handle, uint32_t rgb, double radius,float x,float y,float width,float height) {
     HoodPanel *w=(__bridge HoodPanel *)handle;
     [CATransaction begin]; [CATransaction setDisableActions:YES];
     w.cursor=0;
-    w.contentView.layer.cornerRadius=radius;
-    w.contentView.layer.backgroundColor=[NSColor colorWithSRGBRed:((rgb>>16)&255)/255.0 green:((rgb>>8)&255)/255.0 blue:(rgb&255)/255.0 alpha:1].CGColor;
-    w.highlight.hidden=YES;
-}
-void hood_highlight(void *handle, float x,float y,float width,float height) {
-    HoodPanel *w=(__bridge HoodPanel *)handle;
-    w.highlight.frame=CGRectMake(x,w.contentView.bounds.size.height-y-height,width,height);
-    w.highlight.hidden=NO;
+    w.contentView.layer.backgroundColor=NSColor.clearColor.CGColor;
+    w.background.frame=CGRectMake(x,w.contentView.bounds.size.height-y-height,width,height);
+    w.background.cornerRadius=radius;
+    w.background.backgroundColor=[NSColor colorWithSRGBRed:((rgb>>16)&255)/255.0 green:((rgb>>8)&255)/255.0 blue:(rgb&255)/255.0 alpha:1].CGColor;
 }
 void hood_icon(void *handle, void *image,float x,float y,float width,float height) {
     HoodPanel *w=(__bridge HoodPanel *)handle;

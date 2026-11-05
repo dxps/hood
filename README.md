@@ -56,4 +56,5 @@ Hood restarts; stopped apps in that order remain hidden unless they are kept.
 ```toml
 edge = "left"
 icon_size = 32
+hover_wave = true
 ```

@@ -35,6 +35,7 @@ DEFAULT_SETTINGS :: Settings {
 	screen_edge_gap        = 0,
 	animation_tenths       = 3,
 	tooltip_delay_ms       = 100,
+	hover_wave             = true,
 	magnification_percent  = 60,
 	hover_animation_tenths = 3,
 }
@@ -69,6 +70,7 @@ Settings :: struct {
 	auto_hide:                                    bool,
 	animation_tenths:                             i32,
 	tooltip_delay_ms:                             i32,
+	hover_wave:                                   bool,
 	magnification_percent:                        i32,
 	hover_animation_tenths:                       i32,
 }
@@ -106,6 +108,10 @@ load_settings :: proc(path: string) -> Settings {
 			// Read the previous on/off setting from existing configs.
 			if value == "false" {
 				settings.magnification_percent = 0
+			}
+		case "hover_wave":
+			if value == "true" || value == "false" {
+				settings.hover_wave = value == "true"
 			}
 		case "magnification_percent":
 			percent, valid := strconv.parse_int(value)
@@ -206,7 +212,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
+		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\nhover_wave = %v\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
 		edge,
 		settings.icon_size,
 		settings.corner_radius,
@@ -217,6 +223,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 		settings.auto_hide,
 		settings.animation_tenths,
 		settings.tooltip_delay_ms,
+		settings.hover_wave,
 		settings.magnification_percent,
 		settings.hover_animation_tenths,
 		settings.show_hide_delay_ms,

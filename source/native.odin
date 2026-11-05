@@ -15,8 +15,7 @@ foreign hood_native {
 	hood_create :: proc "c" () -> ^ns.Object ---
 	hood_close :: proc "c" (window: ^ns.Object) ---
 	hood_poll :: proc "c" (window: ^ns.Object, input: ^Native_Input, wait: f64) ---
-	hood_begin :: proc "c" (window: ^ns.Object, rgb: u32, radius: f64) ---
-	hood_highlight :: proc "c" (window: ^ns.Object, x, y, width, height: f32) ---
+	hood_begin :: proc "c" (window: ^ns.Object, rgb: u32, radius: f64, x, y, width, height: f32) ---
 	hood_icon :: proc "c" (window: ^ns.Object, image: rawptr, x, y, width, height: f32) ---
 	hood_end :: proc "c" (window: ^ns.Object) ---
 	hood_tooltip_create :: proc "c" () -> ^ns.Object ---
