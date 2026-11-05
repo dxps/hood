@@ -53,7 +53,7 @@ while true; do
             generation=$((generation + 1))
             library="$session/ui-$generation.dylib"
             if odin build source -build-mode:dll -define:HOOD_UI_MODULE=true -define:RAYLIB_SHARED=true \
-                -out:"$library" -strict-style -vet -debug &&
+				-out:"$library" -strict-style -vet -min-link-libs -debug &&
                 [[ "$(host_snapshot)" == "$current_host" ]]; then
                 printf '%s\n' "$library" > "$session/next"
                 mv "$session/next" "$HOOD_UI_MANIFEST"

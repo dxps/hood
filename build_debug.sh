@@ -12,6 +12,6 @@ flags=()
 if [[ ${1:-} == "--live-ui" ]]; then
     flags=(-define:HOOD_LIVE_UI=true -define:RAYLIB_SHARED=true)
 fi
-odin build source ${flags[@]+"${flags[@]}"} -out:"$staging/hood" -strict-style -vet -debug
+odin build source ${flags[@]+"${flags[@]}"} -out:"$staging/hood" -strict-style -vet -min-link-libs -debug
 mv "$staging/hood" "$output"
 cp "$output" "$output Settings"
