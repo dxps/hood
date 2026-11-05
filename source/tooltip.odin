@@ -22,11 +22,19 @@ hide_tooltip :: proc(tooltip: ^Tooltip) {
 	}
 }
 
-show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.Vector2, edge: Shelf_Edge) {
+show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.Vector2, settings: Settings) {
 	if tooltip.window == nil {
 		menu_font()
 		tooltip.window = hood_tooltip_create()
 	}
-	hood_tooltip_show(tooltip.window, shelf, strings.clone_to_cstring(app.name, context.temp_allocator), center.x, center.y, i32(edge))
+	hood_tooltip_show(
+		tooltip.window,
+		shelf,
+		strings.clone_to_cstring(app.name, context.temp_allocator),
+		center.x,
+		center.y,
+		i32(settings.edge),
+		settings.tooltip_opacity_percent,
+	)
 	tooltip.app_id = app.order_id
 }

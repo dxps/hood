@@ -545,7 +545,7 @@ run_shelf :: proc() {
 			hover_started = hood_time()
 		}
 		if hovered.name != "" && hood_time() - hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {
-			show_tooltip(&tooltip, window, hovered, result.tooltip_center, settings.edge)
+			show_tooltip(&tooltip, window, hovered, result.tooltip_center, settings)
 		} else {
 			hide_tooltip(&tooltip)
 		}

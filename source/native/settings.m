@@ -10,6 +10,7 @@ typedef struct {
     int32_t auto_hide, animation_tenths, tooltip_delay_ms;
     int32_t hover_wave, magnification_percent;
     int32_t hover_animation_tenths;
+    int32_t tooltip_opacity_percent;
 } HoodSettingsState;
 
 typedef struct { int32_t changed, closed, toggle_login, quit_dock; } HoodSettingsEvents;
@@ -27,6 +28,7 @@ enum {
     HoodAutoHide,
     HoodShowAnimation,
     HoodTooltipDelay,
+    HoodTooltipOpacity,
     HoodHoverWave,
     HoodMagnification,
     HoodHoverAnimation,
@@ -158,6 +160,7 @@ static NSBox *hood_separator(void) {
         titles:@[@"Immediate", @"100 ms", @"250 ms", @"450 ms", @"750 ms", @"1 second"]
         values:@[@0, @100, @250, @450, @750, @1000]];
     [stack addArrangedSubview:hood_row(@"Tooltip delay", tooltip)];
+    [stack addArrangedSubview:hood_row(@"Tooltip opacity", [self stepperWithTag:HoodTooltipOpacity minimum:20 maximum:100 increment:5])];
     [stack addArrangedSubview:hood_row(@"Corner radius", [self stepperWithTag:HoodCornerRadius minimum:0 maximum:24 increment:2])];
 
     NSColorWell *color = [[NSColorWell alloc] initWithFrame:NSZeroRect];
@@ -250,7 +253,8 @@ static NSBox *hood_separator(void) {
 - (void)setStepper:(NSInteger)tag value:(NSInteger)value {
     NSStepper *stepper = (NSStepper *)self.controls[@(tag)];
     stepper.integerValue = value;
-    self.valueLabels[@(tag)].stringValue = [NSString stringWithFormat:@"%ld px", (long)value];
+    NSString *suffix = tag == HoodTooltipOpacity ? @"%" : @" px";
+    self.valueLabels[@(tag)].stringValue = [NSString stringWithFormat:@"%ld%@", (long)value, suffix];
 }
 
 - (void)applyState:(HoodSettingsState)state {
@@ -266,6 +270,7 @@ static NSBox *hood_separator(void) {
     [self selectPopup:HoodAutoHide value:state.auto_hide];
     [self selectPopup:HoodShowAnimation value:state.animation_tenths];
     [self selectPopup:HoodTooltipDelay value:state.tooltip_delay_ms];
+    [self setStepper:HoodTooltipOpacity value:state.tooltip_opacity_percent];
     ((NSButton *)self.controls[@(HoodHoverWave)]).state = state.hover_wave ? NSControlStateValueOn : NSControlStateValueOff;
     [self selectPopup:HoodMagnification value:state.magnification_percent];
     [self selectPopup:HoodHoverAnimation value:state.hover_animation_tenths];
@@ -303,6 +308,7 @@ static NSBox *hood_separator(void) {
             break;
         case HoodShowAnimation: state.animation_tenths = (int32_t)value; break;
         case HoodTooltipDelay: state.tooltip_delay_ms = (int32_t)value; break;
+        case HoodTooltipOpacity: state.tooltip_opacity_percent = (int32_t)value; break;
         case HoodHoverWave: state.hover_wave = (int32_t)value; break;
         case HoodMagnification: state.magnification_percent = (int32_t)value; break;
         case HoodHoverAnimation: state.hover_animation_tenths = (int32_t)value; break;

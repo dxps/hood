@@ -19,6 +19,7 @@ Native_Settings_State :: struct {
 	auto_hide, animation_tenths, tooltip_delay_ms:  i32,
 	hover_wave, magnification_percent:              i32,
 	hover_animation_tenths:                         i32,
+	tooltip_opacity_percent:                        i32,
 }
 
 Native_Settings_Events :: struct {
@@ -34,7 +35,7 @@ foreign hood_native {
 	hood_icon :: proc "c" (window: ^ns.Object, image: rawptr, x, y, width, height: f32) ---
 	hood_end :: proc "c" (window: ^ns.Object) ---
 	hood_tooltip_create :: proc "c" () -> ^ns.Object ---
-	hood_tooltip_show :: proc "c" (tip, window: ^ns.Object, text: cstring, x, y: f32, edge: i32) ---
+	hood_tooltip_show :: proc "c" (tip, window: ^ns.Object, text: cstring, x, y: f32, edge, opacity_percent: i32) ---
 	hood_settings_create :: proc "c" (
 		state: ^Native_Settings_State,
 		bundled, login_available, login_enabled, login_pending: i32,

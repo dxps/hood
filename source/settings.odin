@@ -22,6 +22,9 @@ SHOW_HIDE_DELAYS_MS := [5]i32{0, 50, 100, 200, 300}
 
 TOOLTIP_DELAYS_MS := [6]i32{0, 100, 250, 450, 750, 1000}
 
+MIN_TOOLTIP_OPACITY_PERCENT :: 20
+MAX_TOOLTIP_OPACITY_PERCENT :: 100
+
 DEFAULT_SETTINGS :: Settings {
 	icon_size              = 32,
 	corner_radius          = 12,
@@ -32,6 +35,7 @@ DEFAULT_SETTINGS :: Settings {
 	screen_edge_gap        = 0,
 	animation_tenths       = 3,
 	tooltip_delay_ms       = 100,
+	tooltip_opacity_percent = 100,
 	hover_wave             = true,
 	magnification_percent  = 60,
 	hover_animation_tenths = 3,
@@ -60,6 +64,7 @@ Settings :: struct {
 	auto_hide:                                    bool,
 	animation_tenths:                             i32,
 	tooltip_delay_ms:                             i32,
+	tooltip_opacity_percent:                      i32,
 	hover_wave:                                   bool,
 	magnification_percent:                        i32,
 	hover_animation_tenths:                       i32,
@@ -143,6 +148,11 @@ load_settings :: proc(path: string) -> Settings {
 					}
 				}
 			}
+		case "tooltip_opacity_percent":
+			opacity, valid := strconv.parse_int(value)
+			if valid && opacity >= MIN_TOOLTIP_OPACITY_PERCENT && opacity <= MAX_TOOLTIP_OPACITY_PERCENT {
+				settings.tooltip_opacity_percent = i32(opacity)
+			}
 		case "animation_tenths":
 			duration, valid := strconv.parse_int(value)
 			if valid && duration >= 0 && duration <= 10 {
@@ -202,7 +212,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\nhover_wave = %v\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
+		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\ntooltip_opacity_percent = %d\nhover_wave = %v\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
 		edge,
 		settings.icon_size,
 		settings.corner_radius,
@@ -213,6 +223,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 		settings.auto_hide,
 		settings.animation_tenths,
 		settings.tooltip_delay_ms,
+		settings.tooltip_opacity_percent,
 		settings.hover_wave,
 		settings.magnification_percent,
 		settings.hover_animation_tenths,
@@ -247,6 +258,7 @@ native_settings_state :: proc(settings: Settings) -> Native_Settings_State {
 		i32(settings.hover_wave),
 		settings.magnification_percent,
 		settings.hover_animation_tenths,
+		settings.tooltip_opacity_percent,
 	}
 }
 
@@ -264,6 +276,7 @@ settings_from_native :: proc(state: Native_Settings_State) -> Settings {
 		auto_hide                  = state.auto_hide != 0,
 		animation_tenths           = state.animation_tenths,
 		tooltip_delay_ms           = state.tooltip_delay_ms,
+		tooltip_opacity_percent    = state.tooltip_opacity_percent,
 		hover_wave                 = state.hover_wave != 0,
 		magnification_percent      = state.magnification_percent,
 		hover_animation_tenths     = state.hover_animation_tenths,
