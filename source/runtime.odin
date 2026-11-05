@@ -18,19 +18,34 @@ foreign libproc {
 }
 
 Runtime_State :: struct {
-	available, quit_failed: bool,
+	available, cpu_available, quit_failed: bool,
 	dock_pid: i32,
-	memory_bytes: u64,
+	memory_bytes, cpu_total_ns: u64,
+	cpu_sample_time, cpu_percent: f64,
 	bundled, login_enabled, login_pending, login_failed: bool,
 	login_service: ^ns.Object,
 	service_library: dynlib.Library,
 }
 
 update_runtime :: proc(state: ^Runtime_State) {
+	refresh_login_status(state)
 	usage: Runtime_Usage
 	state.available = state.dock_pid > 1 && proc_pid_rusage(state.dock_pid, 0, &usage) == 0
+	if !state.available {
+		state.cpu_available = false
+		state.cpu_total_ns = 0
+		state.cpu_sample_time = 0
+		return
+	}
 	state.memory_bytes = usage.physical_footprint
-	refresh_login_status(state)
+	now := hood_time()
+	total_ns := usage.user_time + usage.system_time
+	if state.cpu_sample_time > 0 && now > state.cpu_sample_time && total_ns >= state.cpu_total_ns {
+		state.cpu_percent = f64(total_ns - state.cpu_total_ns) / 1e9 / (now - state.cpu_sample_time) * 100
+		state.cpu_available = true
+	}
+	state.cpu_total_ns = total_ns
+	state.cpu_sample_time = now
 }
 
 init_runtime_login :: proc(state: ^Runtime_State) {

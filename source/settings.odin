@@ -287,7 +287,9 @@ settings_runtime_update :: proc(window: ^ns.Object, runtime: ^Runtime_State) {
 	hood_settings_set_runtime(
 		window,
 		runtime.memory_bytes,
+		runtime.cpu_percent,
 		i32(runtime.available),
+		i32(runtime.cpu_available),
 		i32(runtime.bundled),
 		i32(runtime.login_service != nil),
 		i32(runtime.login_enabled),

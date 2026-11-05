@@ -52,6 +52,7 @@ foreign hood_native {
 	hood_settings_set_runtime :: proc "c" (
 		window: ^ns.Object,
 		memory_bytes: u64,
-		available, bundled, login_available, login_enabled, login_pending, login_failed: i32,
+		cpu_percent: f64,
+		available, cpu_available, bundled, login_available, login_enabled, login_pending, login_failed: i32,
 	) ---
 }
