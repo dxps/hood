@@ -6,9 +6,6 @@ import "core:strconv"
 import "core:strings"
 import ns "vendor:darwin/AppKit"
 import "core:sys/posix"
-import rl "vendor:raylib"
-
-SETTINGS_WIDTH :: 434
 
 MIN_ICON_SIZE :: 24
 MAX_ICON_SIZE :: 48
@@ -52,13 +49,6 @@ EDGE_KEYS := [Shelf_Edge]string {
 	.Bottom = "bottom",
 	.Top    = "top",
 }
-EDGE_LABELS := [Shelf_Edge]cstring {
-	.Left   = "Left",
-	.Right  = "Right",
-	.Bottom = "Bottom",
-	.Top    = "Top",
-}
-
 Settings :: struct {
 	edge:                                         Shelf_Edge,
 	icon_size:                                    i32,
@@ -240,101 +230,130 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	return os.rename(temp_path, path)
 }
 
-// Raylib owns one window per process. The shelf launches this mode as a child.
+native_settings_state :: proc(settings: Settings) -> Native_Settings_State {
+	return {
+		i32(settings.edge),
+		settings.icon_size,
+		settings.corner_radius,
+		settings.background_rgb,
+		settings.icon_gap,
+		settings.horizontal_margin,
+		settings.vertical_margin,
+		settings.screen_edge_gap,
+		settings.show_hide_delay_ms,
+		i32(settings.auto_hide),
+		settings.animation_tenths,
+		settings.tooltip_delay_ms,
+		i32(settings.hover_wave),
+		settings.magnification_percent,
+		settings.hover_animation_tenths,
+	}
+}
+
+settings_from_native :: proc(state: Native_Settings_State) -> Settings {
+	return {
+		edge                       = Shelf_Edge(state.edge),
+		icon_size                  = state.icon_size,
+		corner_radius              = state.corner_radius,
+		background_rgb             = state.background_rgb,
+		icon_gap                   = state.icon_gap,
+		horizontal_margin          = state.horizontal_margin,
+		vertical_margin            = state.vertical_margin,
+		screen_edge_gap            = state.screen_edge_gap,
+		show_hide_delay_ms         = state.show_hide_delay_ms,
+		auto_hide                  = state.auto_hide != 0,
+		animation_tenths           = state.animation_tenths,
+		tooltip_delay_ms           = state.tooltip_delay_ms,
+		hover_wave                 = state.hover_wave != 0,
+		magnification_percent      = state.magnification_percent,
+		hover_animation_tenths     = state.hover_animation_tenths,
+	}
+}
+
+settings_runtime_update :: proc(window: ^ns.Object, runtime: ^Runtime_State) {
+	hood_settings_set_runtime(
+		window,
+		runtime.memory_bytes,
+		i32(runtime.available),
+		i32(runtime.bundled),
+		i32(runtime.login_service != nil),
+		i32(runtime.login_enabled),
+		i32(runtime.login_pending),
+		i32(runtime.login_failed),
+	)
+}
+
+// The shelf launches Settings as a child process. AppKit owns its window and
+// controls; Odin remains responsible for persistence and runtime operations.
 run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
-	rl.SetConfigFlags({.WINDOW_HIGHDPI, .VSYNC_HINT, .WINDOW_TOPMOST})
-	rl.InitWindow(SETTINGS_WIDTH, settings_height(initial), "Settings")
-	defer rl.CloseWindow()
-	load_ui_font()
-	defer rl.UnloadFont(work_sans)
-	rl.SetTargetFPS(60)
-
-	application := send(^ns.Object, native_class("NSApplication"), "sharedApplication")
-	send(ns.BOOL, application, "setActivationPolicy:", int(1))
-	// Give Raylib a frame to finish processing the window's initial events.
-	window := cocoa_window()
-	rl.BeginDrawing()
-	rl.ClearBackground(settings_theme(window).background)
-	rl.EndDrawing()
-	notify(application, "activateIgnoringOtherApps:", ns.BOOL(true))
-	notify(window, "makeKeyAndOrderFront:", (^ns.Object)(nil))
-	notify(window, "orderFrontRegardless")
-	fmt.eprintfln("Hood Settings: window ready (visible: %v)", send(ns.BOOL, window, "isVisible"))
-
-	ui: Live_UI
-	defer close_live_ui(&ui)
-	draft := initial
-	failed := false
-	dropdown := Settings_Dropdown.None
-	color_panel: ^ns.Object
-	picker_active := false
-	picker_rgb := draft.background_rgb
 	runtime := Runtime_State{dock_pid = i32(posix.getppid())}
 	init_runtime_login(&runtime)
 	defer close_runtime_login(&runtime)
-	for !rl.WindowShouldClose() && posix.getppid() != 1 {
+	update_runtime(&runtime)
+
+	state := native_settings_state(initial)
+	saved := state
+	window := hood_settings_create(
+		&state,
+		i32(runtime.bundled),
+		i32(runtime.login_service != nil),
+		i32(runtime.login_enabled),
+		i32(runtime.login_pending),
+	)
+	if window == nil {
+		fmt.eprintln("Hood could not create its Settings window.")
+		return
+	}
+	defer hood_settings_close(window)
+	settings_runtime_update(window, &runtime)
+
+	next_sample := hood_time() + 1
+	for posix.getppid() != 1 {
 		frame_pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 		defer notify(frame_pool, "drain")
 		defer free_all(context.temp_allocator)
 
-		previous := draft
-		if picker_active {
-			if rgb, ok := color_panel_rgb(color_panel); ok && rgb != picker_rgb {
-				picker_rgb = rgb
-				draft.background_rgb = rgb
-			}
-			picker_active = send(ns.BOOL, color_panel, "isVisible")
+		events: Native_Settings_Events
+		hood_settings_poll(window, &state, &events, 0.05)
+		if events.closed != 0 {
+			break
 		}
-		if runtime.selected && rl.GetTime() >= runtime.next_sample {
-			update_runtime(&runtime)
-			runtime.next_sample = rl.GetTime() + 1
-		}
-		pick_color, done := ui_settings(&ui, window, &draft, failed, &dropdown, &runtime)
-		if runtime.login_toggle {
-			toggle_runtime_login(&runtime)
-		}
-		if runtime.quit_requested {
-			if i32(posix.getppid()) == runtime.dock_pid && runtime.dock_pid > 1 && posix.kill(posix.pid_t(runtime.dock_pid), .SIGTERM) == .OK {
-				break
-			}
-			runtime.quit_failed = true
-			runtime.quit_requested = false
-		}
-		if draft != previous {
-			failed = true
-			if config_path != "" {
-				err := save_settings(config_dir, config_path, draft)
+		if events.changed != 0 {
+			failed := config_path == ""
+			if !failed {
+				err := save_settings(config_dir, config_path, settings_from_native(state))
 				failed = err != nil
 				if failed {
 					fmt.eprintfln("Could not save %s: %v", config_path, err)
 				}
 			}
 			if failed {
-				draft = previous
+				state = saved
+				hood_settings_update(window, &state)
+			} else {
+				saved = state
 			}
+			hood_settings_set_save_failed(window, i32(failed))
 		}
-		if settings_height(draft) != settings_height(previous) {
-			rl.SetWindowSize(SETTINGS_WIDTH, settings_height(draft))
+		if events.toggle_login != 0 {
+			toggle_runtime_login(&runtime)
+			settings_runtime_update(window, &runtime)
 		}
-		if done {
-			break
+		if events.quit_dock != 0 {
+			if i32(posix.getppid()) == runtime.dock_pid && runtime.dock_pid > 1 && posix.kill(posix.pid_t(runtime.dock_pid), .SIGTERM) == .OK {
+				break
+			}
+			runtime.quit_failed = true
+			settings_runtime_update(window, &runtime)
 		}
-		if pick_color {
-			color_panel = send(^ns.Object, native_class("NSColorPanel"), "sharedColorPanel")
-			notify(color_panel, "setShowsAlpha:", ns.BOOL(false))
-			notify(color_panel, "setContinuous:", ns.BOOL(true))
-			notify(color_panel, "setLevel:", send(int, window, "level") + 1)
-		}
-		if pick_color || (picker_active && draft.background_rgb != picker_rgb) {
-			picker_rgb = draft.background_rgb
-			set_color_panel_rgb(color_panel, picker_rgb)
-		}
-		if pick_color {
-			notify(color_panel, "makeKeyAndOrderFront:", (^ns.Object)(nil))
-			picker_active = true
+		now := hood_time()
+		if now >= next_sample {
+			update_runtime(&runtime)
+			settings_runtime_update(window, &runtime)
+			next_sample = now + 1
 		}
 	}
 }

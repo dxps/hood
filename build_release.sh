@@ -8,6 +8,7 @@ contents=build/release/Hood.app/Contents
 minimum_os_version=${MACOSX_DEPLOYMENT_TARGET:-$(sw_vers -productVersion)}
 mkdir -p "$contents/MacOS" "$contents/Resources"
 odin build source -out:"$contents/MacOS/Hood" -strict-style -vet -o:speed -minimum-os-version:"$minimum_os_version"
+cp "$contents/MacOS/Hood" "$contents/MacOS/Hood Settings"
 cp Info.plist "$contents/Info.plist"
 plutil -insert LSMinimumSystemVersion -string "$minimum_os_version" "$contents/Info.plist"
 cp source/fonts/OFL.txt "$contents/Resources/WorkSans-OFL.txt"

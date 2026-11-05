@@ -13,8 +13,8 @@ With Odin on your PATH and the Xcode Command Line Tools installed, run:
 ```
 
 The watcher checks for changes once a second. Edit `source/ui.odin` to reload
-shelf drawing and the Settings UI in their existing windows. Edits to the host,
-configuration code, native integration, or font rebuild and restart Hood.
+shelf drawing in the existing window. Edits to the AppKit Settings UI, host,
+configuration code, or native integration rebuild and restart Hood.
 A failed build leaves the last working version running. Press Ctrl+C to stop
 the watcher and app.
 

@@ -14,3 +14,4 @@ if [[ ${1:-} == "--live-ui" ]]; then
 fi
 odin build source ${flags[@]+"${flags[@]}"} -out:"$staging/hood" -strict-style -vet -debug
 mv "$staging/hood" "$output"
+cp "$output" "$output Settings"
