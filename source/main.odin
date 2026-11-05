@@ -25,7 +25,8 @@ shelf_layout :: proc(settings: Settings, count: int) -> Shelf_Layout {
 	thickness := shelf_thickness
 	if settings.magnification_percent > 0 {
 		grown := (settings.icon_size * (100 + settings.magnification_percent) + 99) / 100
-		lift := (settings.icon_size * 45 + 99) / 100 if settings.hover_wave else 0
+		lift_percent: i32 = 45 if settings.hover_wave else 20
+		lift := (settings.icon_size * lift_percent + 99) / 100
 		// Keep an inward, transparent canvas around the shelf. The background
 		// remains shelf_thickness wide while magnified icons use this extra room.
 		overflow := max(0, (grown - settings.icon_size + 1) / 2 + lift - across)

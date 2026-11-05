@@ -26,7 +26,8 @@ wave_icon_rect :: proc(
 	} else if !layout.horizontal && icon.y >= 0 && icon.y + size <= f32(height) {
 		y = clamp(y, 0, f32(height) - grown)
 	}
-	lift := size * 0.45 * eased if settings.hover_wave else 0
+	lift_factor: f32 = 0.45 if settings.hover_wave else 0.20
+	lift := size * lift_factor * eased
 	switch settings.edge {
 	case .Left:
 		x += lift
