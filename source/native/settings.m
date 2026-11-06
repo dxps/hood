@@ -497,6 +497,19 @@ void *hood_settings_create(const HoodSettingsState *state, int bundled, int logi
     NSProcessInfo.processInfo.processName = @"Hood Settings";
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    NSMenu *menuBar=[[NSMenu alloc] initWithTitle:@"Hood Settings"];
+    NSMenuItem *appItem=[[NSMenuItem alloc] initWithTitle:@"Hood Settings" action:NULL keyEquivalent:@""];
+    NSMenu *appMenu=[[NSMenu alloc] initWithTitle:@"Hood Settings"];
+    [appMenu addItemWithTitle:@"About Hood Settings" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+    [appMenu addItem:NSMenuItem.separatorItem];
+    [appMenu addItemWithTitle:@"Hide Hood Settings" action:@selector(hide:) keyEquivalent:@"h"];
+    [appMenu addItem:NSMenuItem.separatorItem];
+    [appMenu addItemWithTitle:@"Quit Hood Settings" action:@selector(terminate:) keyEquivalent:@"q"];
+    appItem.submenu=appMenu;
+    [menuBar addItem:appItem];
+    NSApp.mainMenu=menuBar;
+    NSString *iconPath=[NSBundle.mainBundle pathForResource:@"Hood" ofType:@"icns"];
+    if(iconPath) NSApp.applicationIconImage=[[NSImage alloc] initWithContentsOfFile:iconPath];
     [NSApp finishLaunching];
 
     HoodSettingsController *controller = [HoodSettingsController new];

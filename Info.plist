@@ -8,6 +8,8 @@
     <string>dev.dxps.hood</string>
     <key>CFBundleName</key>
     <string>Hood</string>
+    <key>CFBundleIconFile</key>
+    <string>Hood</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

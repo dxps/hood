@@ -26,6 +26,7 @@ cp Info.plist "$contents/Info.plist"
 plutil -insert LSMinimumSystemVersion -string "$minimum_os_version" "$contents/Info.plist"
 # Separate development permissions and app registration from the release app.
 plutil -replace CFBundleIdentifier -string dev.dxps.hood.debug "$contents/Info.plist"
+cp source/assets/Hood.icns "$contents/Resources/Hood.icns"
 cp source/fonts/OFL.txt "$contents/Resources/WorkSans-OFL.txt"
 plutil -lint "$contents/Info.plist"
 codesign --force --sign - "$staging/Hood.app"

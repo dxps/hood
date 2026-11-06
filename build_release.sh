@@ -11,6 +11,7 @@ odin build source -out:"$contents/MacOS/Hood" -strict-style -vet -min-link-libs 
 rm -f "$contents/MacOS/Hood Settings"
 cp Info.plist "$contents/Info.plist"
 plutil -insert LSMinimumSystemVersion -string "$minimum_os_version" "$contents/Info.plist"
+cp source/assets/Hood.icns "$contents/Resources/Hood.icns"
 cp source/fonts/OFL.txt "$contents/Resources/WorkSans-OFL.txt"
 plutil -lint "$contents/Info.plist"
 codesign --force --sign - build/release/Hood.app
