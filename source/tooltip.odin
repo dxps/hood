@@ -35,6 +35,7 @@ show_tooltip :: proc(tooltip: ^Tooltip, shelf: ^ns.Object, app: App, center: rl.
 		center.y,
 		i32(settings.edge),
 		settings.tooltip_opacity_percent,
+		app.pid,
 	)
 	tooltip.app_id = app.order_id
 }

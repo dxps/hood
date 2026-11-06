@@ -2,16 +2,22 @@
 set -eu
 cd "$(dirname "$0")"
 
+minimum_os_version=${MACOSX_DEPLOYMENT_TARGET:-$(sw_vers -productVersion)}
 mkdir -p build/debug
 session=$(mktemp -d "$PWD/build/debug/.live.XXXXXX")
 export HOOD_UI_MANIFEST="$session/current"
-# Settings launches this same executable. Keep it separate from standalone builds.
-executable="$session/hood"
+# Keep the app identity stable across watcher sessions. Only reload artifacts
+# and the manifest live in the temporary session directory.
+app_bundle="$PWD/build/debug/Hood.app"
 app_pid=
 stop_app() {
     if [[ -n "$app_pid" ]]; then
         kill "$app_pid" 2>/dev/null || true
-        wait "$app_pid" 2>/dev/null || true
+        # LaunchServices owns the process, so it is not a child we can wait for.
+        for ((attempt=0; attempt<50; attempt++)); do
+            if ! kill -0 "$app_pid" 2>/dev/null; then break; fi
+            sleep 0.1
+        done
         app_pid=
     fi
 }
@@ -26,7 +32,7 @@ trap 'exit 143' TERM
 host_snapshot() {
     find source -type f \( -name '*.odin' -o -name '*.ttf' -o -name '*.m' \) ! -path 'source/ui.odin' \
         -exec shasum {} + | LC_ALL=C sort
-    shasum build_debug.sh build_native.sh
+    shasum build_debug.sh build_native.sh build_dev.sh Info.plist
 }
 
 previous_host=
@@ -40,11 +46,10 @@ while true; do
         previous_host=$current_host
         previous_ui=$current_ui
         host_built=false
-        if ./build_debug.sh --live-ui "$executable"; then
+        if ./build_dev.sh; then
             stop_app
             rm -f "$HOOD_UI_MANIFEST"
-            "$executable" &
-            app_pid=$!
+            app_pid=$(build/debug/hood-launch "$app_bundle" "$HOOD_UI_MANIFEST")
             host_built=true
         fi
     elif [[ "$current_ui" != "$previous_ui" ]]; then
@@ -53,7 +58,7 @@ while true; do
             generation=$((generation + 1))
             library="$session/ui-$generation.dylib"
             if odin build source -build-mode:dll -define:HOOD_UI_MODULE=true -define:RAYLIB_SHARED=true \
-				-out:"$library" -strict-style -vet -min-link-libs -debug &&
+				-out:"$library" -strict-style -vet -min-link-libs -debug -minimum-os-version:"$minimum_os_version" &&
                 [[ "$(host_snapshot)" == "$current_host" ]]; then
                 printf '%s\n' "$library" > "$session/next"
                 mv "$session/next" "$HOOD_UI_MANIFEST"

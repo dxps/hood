@@ -426,7 +426,7 @@ run_shelf :: proc() {
 			&visibility,
 			settings,
 			now, delta,
-			keep_visible = now < startup_visible_until || settings_process.pid != 0,
+			keep_visible = now < startup_visible_until || settings_process.pid != 0 || hood_tooltip_active(tooltip.window) != 0,
 		)
 		if visibility.hidden {
 			hide_tooltip(&tooltip)
@@ -448,7 +448,7 @@ run_shelf :: proc() {
 			redraw_until = now + max(f64(settings.hover_animation_tenths) / 10, f64(settings.tooltip_delay_ms) / 1000) + 0.1
 		}
 		last_pointer = pointer
-		if !redraw && !was_hidden && now > redraw_until &&
+		if !redraw && !was_hidden && tooltip.app_id == 0 && now > redraw_until &&
 		   (visibility.progress == 0 || visibility.progress == 1) && input.escape == 0 {
 			// Preserve the last frame; still pump input so clicks and reveal remain responsive.
 			wait = 0.04
@@ -546,7 +546,7 @@ run_shelf :: proc() {
 		}
 		if hovered.name != "" && hood_time() - hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {
 			show_tooltip(&tooltip, window, hovered, result.tooltip_center, settings)
-		} else {
+		} else if context_click || open_settings || hovered.order_id != 0 || (input.down != 0 && pointer_inside) || hood_tooltip_active(tooltip.window) == 0 {
 			hide_tooltip(&tooltip)
 		}
 		if open_settings {

@@ -5,6 +5,8 @@ import ns "vendor:darwin/AppKit"
 foreign import hood_native "../build/native/libhood_native.a"
 @(require)
 foreign import quartz_core "system:QuartzCore.framework"
+@(require)
+foreign import application_services "system:ApplicationServices.framework"
 
 Native_Input :: struct {
 	pressed, released, down, right, escape: i32,
@@ -35,7 +37,8 @@ foreign hood_native {
 	hood_icon :: proc "c" (window: ^ns.Object, image: rawptr, x, y, width, height: f32) ---
 	hood_end :: proc "c" (window: ^ns.Object) ---
 	hood_tooltip_create :: proc "c" () -> ^ns.Object ---
-	hood_tooltip_show :: proc "c" (tip, window: ^ns.Object, text: cstring, x, y: f32, edge, opacity_percent: i32) ---
+	hood_tooltip_show :: proc "c" (tip, window: ^ns.Object, text: cstring, x, y: f32, edge, opacity_percent, pid: i32) ---
+	hood_tooltip_active :: proc "c" (tip: ^ns.Object) -> i32 ---
 	hood_settings_create :: proc "c" (
 		state: ^Native_Settings_State,
 		bundled, login_available, login_enabled, login_pending: i32,

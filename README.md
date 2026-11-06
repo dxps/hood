@@ -21,10 +21,29 @@ the watcher and app.
 Live reload uses the shared macOS Raylib library supplied by the Odin toolchain.
 The standalone debug and release builds use the statically linked Raylib library.
 
+The watcher builds and launches `build/debug/Hood.app` through macOS LaunchServices,
+so privacy requests are associated with the app rather than its launching terminal. This bundle stays in place
+when the watcher stops and uses a separate development bundle identifier,
+`dev.dxps.hood.debug`. Only temporary live-reload files are removed on exit.
+Run `./build_dev.sh` to build the same development app without starting the watcher.
+
+For window controls, add `build/debug/Hood.app` in System Settings → Privacy &
+Security → Device Control and Data Access (called Accessibility on older macOS
+versions), then enable it. The path stays the same across development sessions.
+Development builds are ad hoc signed; macOS may still require permission to be
+re-enabled after a rebuild changes the executable.
+
 Run `./build_debug.sh` to compile a debug executable without starting the watcher.
 
 Click an app icon to switch to it. Scroll if the icons exceed the shelf height.
 Press Escape while the shelf has focus to close it.
+
+Hover an app with multiple windows to see a scrollable list of window titles.
+Click a title to restore a minimized window or bring an open window forward.
+Clicking the currently active window minimizes it. Window controls require macOS Accessibility access;
+the compact hover popup provides setup instructions and an **Open Accessibility
+Settings** button when access is missing. Enable Hood (or the development executable) in System Settings →
+Privacy & Security → Accessibility.
 
 ## Release
 
