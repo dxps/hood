@@ -106,6 +106,9 @@ static CGFloat hood_luminance(NSColor *color) {
     NSColor *rgb=[color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
     return 0.2126*hood_linear(rgb.redComponent)+0.7152*hood_linear(rgb.greenComponent)+0.0722*hood_linear(rgb.blueComponent);
 }
+static NSColor *hood_text_color(NSColor *background) {
+    return hood_luminance(background)>0.179?NSColor.blackColor:NSColor.whiteColor;
+}
 @interface HoodWindowButton : HoodPopupButton
 @property NSColor *popupColor;
 @property NSTrackingArea *hoverArea;
@@ -134,11 +137,19 @@ static CGFloat hood_luminance(NSColor *color) {
     // the middle of the #252525–#505050 range.
     BOOL lighten=luminance<(low+high)/2;
     CGFloat amount=(self.hovered || self.cell.highlighted)?0.20:0.08;
+    if(!lighten) {
+        // Black has less room to shade a dark background. Scale the blend
+        // by its brightest sRGB channel, keeping the adjustment bounded.
+        NSColor *rgb=[background colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+        CGFloat brightness=MAX(rgb.redComponent,MAX(rgb.greenComponent,rgb.blueComponent));
+        CGFloat limit=(self.hovered || self.cell.highlighted)?0.35:0.20;
+        amount=MIN(limit,amount/MAX(brightness,0.01));
+    }
     NSColor *accent=lighten?NSColor.whiteColor:NSColor.blackColor;
     NSColor *fill=[background blendedColorWithFraction:amount ofColor:accent];
     [fill setFill];
     [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds,0,3) xRadius:6 yRadius:6] fill];
-    NSColor *text=hood_luminance(fill)>0.179?NSColor.blackColor:NSColor.whiteColor;
+    NSColor *text=hood_text_color(fill);
     NSMutableParagraphStyle *style=[[NSMutableParagraphStyle alloc] init];
     style.alignment=NSTextAlignmentCenter;
     style.lineBreakMode=NSLineBreakByTruncatingTail;
@@ -352,7 +363,7 @@ void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,
     y=MAX(NSMinY(available),MIN(y,NSMaxY(available)-height));
     NSRect target=NSMakeRect(x,y,width,height);
     if(!NSEqualRects(w.frame,target)) [w setFrame:target display:YES];
-    label.textColor=w.list?[NSColor colorWithWhite:1 alpha:0.6]:NSColor.whiteColor;
+    label.textColor=hood_text_color([NSColor colorWithCGColor:w.contentView.layer.backgroundColor]);
     label.frame=NSMakeRect(10,w.list?height-textHeight-4:4,width-20,textHeight); w.level=host.level+1;
     if(!w.visible) [w orderFrontRegardless];
 }
