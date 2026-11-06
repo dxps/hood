@@ -485,6 +485,12 @@ run_shelf :: proc() {
 			}
 			kept := context_app != nil && pinned_app_index(pinned_apps[:], context_app.bundle_id) >= 0
 			menu_choice = show_context_menu(window, context_app, kept)
+			if menu_choice == .Quit_App && context_app != nil && context_app.pid != 0 {
+				target := send(^ns.Object, native_class("NSRunningApplication"), "runningApplicationWithProcessIdentifier:", context_app.pid)
+				// Request a normal quit so the app can prompt to save documents.
+				send(ns.BOOL, target, "terminate")
+				next_app_refresh = 0
+			}
 			if menu_choice == .Keep_In_Dock && context_app != nil {
 				err := set_pinned_app(config_dir, pinned_path, &pinned_apps, context_app.bundle_id, !kept)
 				if err != nil {

@@ -40,6 +40,7 @@ Menu_Choice :: enum {
 	None,
 	Settings,
 	Keep_In_Dock,
+	Quit_App,
 }
 
 selected_menu_choice: Menu_Choice
@@ -87,6 +88,15 @@ show_context_menu :: proc(window: ^ns.Object, app: ^App, kept: bool) -> Menu_Cho
 		notify(keep, "setAction:", action)
 		notify(keep, "setTarget:", target)
 		notify(menu, "addItem:", keep)
+		if app.pid != 0 {
+			quit := send(^ns.Object, native_class("NSMenuItem"), "new")
+			defer notify(quit, "release")
+			set_menu_item_title(quit, "Quit the app", "\u00a0\u00a0Quit the app\u00a0\u00a0")
+			notify(quit, "setTag:", int(Menu_Choice.Quit_App))
+			notify(quit, "setAction:", action)
+			notify(quit, "setTarget:", target)
+			notify(menu, "addItem:", quit)
+		}
 		separator := send(^ns.Object, native_class("NSMenuItem"), "separatorItem")
 		notify(menu, "addItem:", separator)
 	}

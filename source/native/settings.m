@@ -2,6 +2,10 @@
 #include <math.h>
 #include <stdint.h>
 
+#ifndef HOOD_BUILD_VERSION
+#define HOOD_BUILD_VERSION "unknown"
+#endif
+
 typedef struct {
     int32_t edge, icon_size, corner_radius;
     uint32_t background_rgb;
@@ -36,36 +40,20 @@ enum {
     HoodQuit,
 };
 
-// Keep the native color picker while labeling its swatch with the saved RGB value.
-@interface HoodHexColorWell : NSColorWell
+// The selected color is data, not the button's appearance. AppKit supplies the
+// same theme-aware bezel and text treatment as the other Settings controls.
+@interface HoodHexColorButton : NSButton
+@property (nonatomic, strong) NSColor *color;
 @end
-@implementation HoodHexColorWell
-- (NSString *)hexLabel {
-    NSColor *rgb=[self.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-    return [NSString stringWithFormat:@"#%02X%02X%02X",
+@implementation HoodHexColorButton
+- (void)setColor:(NSColor *)color {
+    _color=color;
+    NSColor *rgb=[color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    self.title=[NSString stringWithFormat:@"#%02X%02X%02X",
         (unsigned)lround(rgb.redComponent*255),
         (unsigned)lround(rgb.greenComponent*255),
         (unsigned)lround(rgb.blueComponent*255)];
-}
-- (void)setColor:(NSColor *)color {
-    [super setColor:color];
-    self.needsDisplay=YES;
-    self.accessibilityValue=[self hexLabel];
-}
-- (void)drawRect:(NSRect)dirtyRect {
-    [super drawRect:dirtyRect];
-    NSColor *rgb=[self.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
-    CGFloat components[]={rgb.redComponent,rgb.greenComponent,rgb.blueComponent};
-    for(int i=0;i<3;i++) components[i]=components[i]<=0.04045?components[i]/12.92:pow((components[i]+0.055)/1.055,2.4);
-    CGFloat luminance=0.2126*components[0]+0.7152*components[1]+0.0722*components[2];
-    NSDictionary *attributes=@{
-        NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
-        NSForegroundColorAttributeName:luminance>0.179?NSColor.blackColor:NSColor.whiteColor
-    };
-    NSString *label=[self hexLabel];
-    NSSize size=[label sizeWithAttributes:attributes];
-    [label drawAtPoint:NSMakePoint((self.bounds.size.width-size.width)/2,(self.bounds.size.height-size.height)/2)
-        withAttributes:attributes];
+    self.accessibilityValue=self.title;
 }
 @end
 
@@ -269,11 +257,11 @@ static NSBox *hood_separator(void) {
     [stack addArrangedSubview:hood_row(@"Tooltip opacity", [self stepperWithTag:HoodTooltipOpacity minimum:20 maximum:100 increment:5])];
     [stack addArrangedSubview:hood_row(@"Corner radius", [self stepperWithTag:HoodCornerRadius minimum:0 maximum:24 increment:2])];
 
-    NSColorWell *color = [[HoodHexColorWell alloc] initWithFrame:NSZeroRect];
+    HoodHexColorButton *color = [HoodHexColorButton buttonWithTitle:@"" target:self action:@selector(openBackgroundColor:)];
     color.accessibilityLabel = @"Background color";
     color.tag = HoodBackground;
     color.target = self;
-    color.action = @selector(controlChanged:);
+    color.action = @selector(openBackgroundColor:);
     self.controls[@(HoodBackground)] = color;
     [stack addArrangedSubview:hood_row(@"Background color", color)];
 
@@ -318,6 +306,9 @@ static NSBox *hood_separator(void) {
 
 - (NSView *)runtimeViewBundled:(BOOL)bundled loginAvailable:(BOOL)loginAvailable {
     NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 620)];
+    NSTextField *version = hood_label(@"App version: " HOOD_BUILD_VERSION);
+    version.frame = NSMakeRect(20, 592, 460, 20);
+    [view addSubview:version];
     self.loginButton = [[HoodFastTooltipButton alloc] initWithFrame:NSZeroRect];
     self.loginButton.buttonType = NSButtonTypeSwitch;
     self.loginButton.title = @"Launch at login";
@@ -418,13 +409,29 @@ static NSBox *hood_separator(void) {
     CGFloat red = ((state.background_rgb >> 16) & 255) / 255.0;
     CGFloat green = ((state.background_rgb >> 8) & 255) / 255.0;
     CGFloat blue = (state.background_rgb & 255) / 255.0;
-    ((NSColorWell *)self.controls[@(HoodBackground)]).color = [NSColor colorWithSRGBRed:red green:green blue:blue alpha:1];
+    ((HoodHexColorButton *)self.controls[@(HoodBackground)]).color = [NSColor colorWithSRGBRed:red green:green blue:blue alpha:1];
     self.showAnimationRow.hidden = !state.auto_hide;
     self.showDelayRow.hidden = !state.auto_hide;
 }
 
 - (NSInteger)popupValue:(NSPopUpButton *)popup {
     return [popup.selectedItem.representedObject integerValue];
+}
+
+- (void)openBackgroundColor:(HoodHexColorButton *)sender {
+    NSColorPanel *panel=NSColorPanel.sharedColorPanel;
+    panel.showsAlpha=NO;
+    panel.color=sender.color;
+    panel.continuous=YES;
+    panel.target=self;
+    panel.action=@selector(backgroundColorChanged:);
+    [panel makeKeyAndOrderFront:nil];
+}
+
+- (void)backgroundColorChanged:(NSColorPanel *)sender {
+    HoodHexColorButton *button=(HoodHexColorButton *)self.controls[@(HoodBackground)];
+    button.color=sender.color;
+    [self controlChanged:button];
 }
 
 - (void)controlChanged:(NSControl *)sender {
@@ -454,7 +461,7 @@ static NSBox *hood_separator(void) {
         case HoodMagnification: state.magnification_percent = (int32_t)value; break;
         case HoodHoverAnimation: state.hover_animation_tenths = (int32_t)value; break;
         case HoodBackground: {
-            NSColor *color = [((NSColorWell *)sender).color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+            NSColor *color = [((HoodHexColorButton *)sender).color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
             state.background_rgb = ((uint32_t)lround(color.redComponent * 255) << 16) |
                 ((uint32_t)lround(color.greenComponent * 255) << 8) |
                 (uint32_t)lround(color.blueComponent * 255);
@@ -478,6 +485,8 @@ static NSBox *hood_separator(void) {
 - (void)closeSettings:(id)sender { (void)sender; [self.window close]; }
 - (void)windowWillClose:(NSNotification *)notification {
     (void)notification;
+    NSColorPanel.sharedColorPanel.target=nil;
+    [NSColorPanel.sharedColorPanel orderOut:nil];
     HoodSettingsEvents events = self.events;
     events.closed = 1;
     self.events = events;
