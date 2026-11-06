@@ -36,6 +36,39 @@ enum {
     HoodQuit,
 };
 
+// Keep the native color picker while labeling its swatch with the saved RGB value.
+@interface HoodHexColorWell : NSColorWell
+@end
+@implementation HoodHexColorWell
+- (NSString *)hexLabel {
+    NSColor *rgb=[self.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    return [NSString stringWithFormat:@"#%02X%02X%02X",
+        (unsigned)lround(rgb.redComponent*255),
+        (unsigned)lround(rgb.greenComponent*255),
+        (unsigned)lround(rgb.blueComponent*255)];
+}
+- (void)setColor:(NSColor *)color {
+    [super setColor:color];
+    self.needsDisplay=YES;
+    self.accessibilityValue=[self hexLabel];
+}
+- (void)drawRect:(NSRect)dirtyRect {
+    [super drawRect:dirtyRect];
+    NSColor *rgb=[self.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    CGFloat components[]={rgb.redComponent,rgb.greenComponent,rgb.blueComponent};
+    for(int i=0;i<3;i++) components[i]=components[i]<=0.04045?components[i]/12.92:pow((components[i]+0.055)/1.055,2.4);
+    CGFloat luminance=0.2126*components[0]+0.7152*components[1]+0.0722*components[2];
+    NSDictionary *attributes=@{
+        NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
+        NSForegroundColorAttributeName:luminance>0.179?NSColor.blackColor:NSColor.whiteColor
+    };
+    NSString *label=[self hexLabel];
+    NSSize size=[label sizeWithAttributes:attributes];
+    [label drawAtPoint:NSMakePoint((self.bounds.size.width-size.width)/2,(self.bounds.size.height-size.height)/2)
+        withAttributes:attributes];
+}
+@end
+
 @interface HoodFastTooltipButton : NSButton
 @property (nonatomic, copy) NSString *fastToolTip;
 @property NSTrackingArea *hoverTrackingArea;
@@ -236,7 +269,8 @@ static NSBox *hood_separator(void) {
     [stack addArrangedSubview:hood_row(@"Tooltip opacity", [self stepperWithTag:HoodTooltipOpacity minimum:20 maximum:100 increment:5])];
     [stack addArrangedSubview:hood_row(@"Corner radius", [self stepperWithTag:HoodCornerRadius minimum:0 maximum:24 increment:2])];
 
-    NSColorWell *color = [[NSColorWell alloc] initWithFrame:NSZeroRect];
+    NSColorWell *color = [[HoodHexColorWell alloc] initWithFrame:NSZeroRect];
+    color.accessibilityLabel = @"Background color";
     color.tag = HoodBackground;
     color.target = self;
     color.action = @selector(controlChanged:);
