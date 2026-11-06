@@ -204,11 +204,13 @@ static NSBox *hood_separator(void) {
 }
 
 - (NSView *)stepperWithTag:(NSInteger)tag minimum:(double)minimum maximum:(double)maximum increment:(double)increment {
-    NSView *container = [[NSView alloc] initWithFrame:NSZeroRect];
+    NSView *container = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 85, 28)];
     NSTextField *value = hood_label(@"");
     value.alignment = NSTextAlignmentRight;
     value.frame = NSMakeRect(0, 5, 60, 20);
+    value.autoresizingMask = NSViewMinXMargin;
     NSStepper *stepper = [[NSStepper alloc] initWithFrame:NSMakeRect(66, 3, 19, 24)];
+    stepper.autoresizingMask = NSViewMinXMargin;
     stepper.minValue = minimum;
     stepper.maxValue = maximum;
     stepper.increment = increment;
