@@ -2,7 +2,7 @@
 set -eu
 cd "$(dirname "$0")"
 minimum_os_version=${MACOSX_DEPLOYMENT_TARGET:-$(sw_vers -productVersion)}
-./build_native.sh
+./build_native.sh debug
 
 output=${2:-build/debug/hood}
 out=$(dirname "$output")

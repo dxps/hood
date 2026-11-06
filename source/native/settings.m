@@ -6,6 +6,9 @@
 #ifndef HOOD_BUILD_VERSION
 #define HOOD_BUILD_VERSION "unknown"
 #endif
+#ifndef HOOD_BUILD_TYPE
+#define HOOD_BUILD_TYPE "unknown"
+#endif
 
 typedef struct {
     char display[37];
@@ -366,7 +369,7 @@ static NSBox *hood_separator(void) {
 
 - (NSView *)runtimeViewBundled:(BOOL)bundled loginAvailable:(BOOL)loginAvailable {
     NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 620)];
-    NSTextField *version = hood_label(@"Version: " HOOD_BUILD_VERSION);
+    NSTextField *version = hood_label(@"Version: " HOOD_BUILD_VERSION " (" HOOD_BUILD_TYPE ")");
     version.frame = NSMakeRect(20, 584, 460, 20);
     [view addSubview:version];
     self.loginButton = [[HoodFastTooltipButton alloc] initWithFrame:NSZeroRect];

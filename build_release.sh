@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 cd "$(dirname "$0")"
-./build_native.sh
+./build_native.sh release
 
 contents=build/release/Hood.app/Contents
 # Target this Mac explicitly: the toolchain's inferred minimum can exceed it.
