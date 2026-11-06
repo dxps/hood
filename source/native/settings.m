@@ -356,6 +356,7 @@ static NSBox *hood_separator(void) {
 - (NSView *)runtimeViewBundled:(BOOL)bundled loginAvailable:(BOOL)loginAvailable {
     NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 880, 450)];
     NSTextField *version = hood_label(@"Version: " HOOD_BUILD_VERSION " (" HOOD_BUILD_TYPE ")");
+    version.selectable = YES;
     version.frame = NSMakeRect(18, 414, 370, 20);
     [view addSubview:version];
     self.loginButton = [[HoodFastTooltipButton alloc] initWithFrame:NSZeroRect];
