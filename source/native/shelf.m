@@ -130,12 +130,12 @@ static CGFloat hood_luminance(NSColor *color) {
     NSColor *background=self.popupColor ?: NSColor.darkGrayColor;
     CGFloat luminance=hood_luminance(background);
     CGFloat low=hood_linear(37/255.0), high=hood_linear(80/255.0);
-    // Fade from lightening below #252525 to darkening at #505050.
-    CGFloat transition=MAX(0,MIN(1,(luminance-low)/(high-low)));
-    CGFloat direction=1-2*transition;
+    // Choose a direction without reducing the shading amount to zero in
+    // the middle of the #252525–#505050 range.
+    BOOL lighten=luminance<(low+high)/2;
     CGFloat amount=(self.hovered || self.cell.highlighted)?0.20:0.08;
-    NSColor *accent=direction>=0?NSColor.whiteColor:NSColor.blackColor;
-    NSColor *fill=[background blendedColorWithFraction:amount*fabs(direction) ofColor:accent];
+    NSColor *accent=lighten?NSColor.whiteColor:NSColor.blackColor;
+    NSColor *fill=[background blendedColorWithFraction:amount ofColor:accent];
     [fill setFill];
     [[NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds,0,3) xRadius:6 yRadius:6] fill];
     NSColor *text=hood_luminance(fill)>0.179?NSColor.blackColor:NSColor.whiteColor;
