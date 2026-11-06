@@ -54,6 +54,7 @@ EDGE_KEYS := [Shelf_Edge]string {
 	.Top    = "top",
 }
 Settings :: struct {
+	display: [37]u8, // Empty: primary; "all": every display; otherwise a display UUID.
 	edge:                                         Shelf_Edge,
 	icon_size:                                    i32,
 	corner_radius:                                i32,
@@ -95,6 +96,12 @@ load_settings :: proc(path: string) -> Settings {
 		}
 		key = strings.trim_space(key)
 		switch key {
+		case "display":
+			choice := strings.trim(value, "\"'")
+			if valid_display_choice(choice) {
+				settings.display = {}
+				copy(settings.display[:], transmute([]u8)choice)
+			}
 		case "auto_hide":
 			if value == "true" || value == "false" {
 				settings.auto_hide = value == "true"
@@ -212,7 +219,8 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"edge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\ntooltip_opacity_percent = %d\nhover_wave = %v\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
+		"display = \"%s\"\nedge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\ntooltip_opacity_percent = %d\nhover_wave = %v\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
+		string_from_display(settings.display),
 		edge,
 		settings.icon_size,
 		settings.corner_radius,
@@ -243,6 +251,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 
 native_settings_state :: proc(settings: Settings) -> Native_Settings_State {
 	return {
+		settings.display,
 		i32(settings.edge),
 		settings.icon_size,
 		settings.corner_radius,
@@ -264,6 +273,7 @@ native_settings_state :: proc(settings: Settings) -> Native_Settings_State {
 
 settings_from_native :: proc(state: Native_Settings_State) -> Settings {
 	return {
+		display                    = state.display,
 		edge                       = Shelf_Edge(state.edge),
 		icon_size                  = state.icon_size,
 		corner_radius              = state.corner_radius,
@@ -371,4 +381,25 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 			next_sample = now + 1
 		}
 	}
+}
+
+string_from_display :: proc(value: [37]u8) -> string {
+	display := value
+	for byte, i in display {
+		if byte == 0 { return strings.clone(string(display[:i]), context.temp_allocator) }
+	}
+	return strings.clone(string(display[:]), context.temp_allocator)
+}
+
+valid_display_choice :: proc(value: string) -> bool {
+	if value == "" || value == "all" { return true }
+	if len(value) != 36 { return false }
+	for c, i in value {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' { return false }
+		} else if !(c >= '0' && c <= '9' || c >= 'A' && c <= 'F' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }

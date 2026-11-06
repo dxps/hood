@@ -10,6 +10,12 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
+Shelf_Interaction :: struct {
+	drag_id: u64,
+	drag_start: rl.Vector2,
+	dragging: bool,
+}
+
 Shelf_Frame :: struct {
 	hovered:        App,
 	tooltip_center: rl.Vector2,
@@ -22,6 +28,7 @@ Shelf_Frame :: struct {
 @(export)
 hood_draw_shelf :: proc(
 	window: ^ns.Object,
+	interaction: ^Shelf_Interaction,
 	input: ^Native_Input,
 	delta: f32,
 	apps: []App,
@@ -30,7 +37,7 @@ hood_draw_shelf :: proc(
 	scroll: f32,
 	context_click: bool,
 ) -> Shelf_Frame {
-	return draw_shelf(window, input, delta, apps, settings, width, height, scroll, context_click)
+	return draw_shelf(window, interaction, input, delta, apps, settings, width, height, scroll, context_click)
 }
 
 Live_UI :: struct {
@@ -95,6 +102,7 @@ close_live_ui :: proc(ui: ^Live_UI) {
 ui_shelf :: proc(
 	ui: ^Live_UI,
 	window: ^ns.Object,
+	interaction: ^Shelf_Interaction,
 	input: ^Native_Input,
 	delta: f32,
 	apps: []App,
@@ -105,5 +113,5 @@ ui_shelf :: proc(
 ) -> Shelf_Frame {
 	refresh_live_ui(ui)
 	draw := ui.shelf if ui.shelf != nil else hood_draw_shelf
-	return draw(window, input, delta, apps, settings, width, height, scroll, context_click)
+	return draw(window, interaction, input, delta, apps, settings, width, height, scroll, context_click)
 }

@@ -14,6 +14,7 @@ Native_Input :: struct {
 }
 
 Native_Settings_State :: struct {
+	display: [37]u8,
 	edge, icon_size, corner_radius:                 i32,
 	background_rgb:                                u32,
 	icon_gap, horizontal_margin, vertical_margin:  i32,
@@ -29,6 +30,8 @@ Native_Settings_Events :: struct {
 }
 
 foreign hood_native {
+	hood_selected_screen :: proc "c" (selection: cstring, index: i32) -> ^ns.Object ---
+	hood_screen_id :: proc "c" (screen: ^ns.Object) -> u32 ---
 	hood_time :: proc "c" () -> f64 ---
 	hood_create :: proc "c" () -> ^ns.Object ---
 	hood_close :: proc "c" (window: ^ns.Object) ---

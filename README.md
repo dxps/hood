@@ -61,8 +61,12 @@ with your target). Odin and its linked libraries must also support that version.
 
 ## Settings
 
-Right-click anywhere on the shelf, including an app icon, and choose **Settings**.
+Right-click anywhere on the shelf, including an app icon, and choose **Dock Settings**.
 Settings opens in a separate window while the shelf stays visible.
+The **Display** option offers **Primary display**, **All displays**, and each
+connected monitor. A specific monitor is remembered across restarts. If it is
+disconnected, Hood uses the primary display until that monitor reconnects.
+Each dock has independent scrolling, hover, and auto-hide behavior.
 Choose the left, right, bottom, or top screen edge and set the icon size from 24 to 48 pixels.
 Changes apply while Settings is open and are saved automatically to
 `~/.config/hood/hood.toml`. Hood loads the file at startup.

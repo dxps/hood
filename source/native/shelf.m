@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <math.h>
+#import "displays.h"
 
 typedef struct { int32_t pressed, released, down, right, escape; double wheel; } HoodInput;
 @interface HoodView : NSView
@@ -15,16 +16,23 @@ typedef struct { int32_t pressed, released, down, right, escape; double wheel; }
 @property NSMutableArray<CALayer *> *items;
 @property CALayer *background;
 @property NSUInteger cursor;
+@property HoodInput pendingInput;
 @end
 @implementation HoodPanel
 - (BOOL)canBecomeKeyWindow { return YES; }
 @end
 
 double hood_time(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec/1e9; }
-void *hood_create(void) {
+static void hood_initialize(void) {
+    static BOOL initialized=NO;
+    if(initialized) return;
+    initialized=YES;
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     [NSApp finishLaunching];
+}
+void *hood_create(void) {
+    hood_initialize();
     HoodPanel *w=[[HoodPanel alloc] initWithContentRect:NSMakeRect(0,0,80,80)
         styleMask:NSWindowStyleMaskBorderless|NSWindowStyleMaskNonactivatingPanel backing:NSBackingStoreBuffered defer:NO];
     w.releasedWhenClosed=NO; w.opaque=NO; w.backgroundColor=NSColor.clearColor;
@@ -41,6 +49,7 @@ void *hood_create(void) {
 }
 void hood_close(void *handle) { HoodPanel *w=CFBridgingRelease(handle); [w close]; }
 void hood_poll(void *handle, HoodInput *input, double wait) {
+    hood_initialize();
     HoodPanel *w=(__bridge HoodPanel *)handle;
     *input=(HoodInput){0};
     NSDate *deadline=[NSDate dateWithTimeIntervalSinceNow:wait];
@@ -48,17 +57,24 @@ void hood_poll(void *handle, HoodInput *input, double wait) {
         NSEvent *e=[NSApp nextEventMatchingMask:NSEventMaskAny untilDate:deadline inMode:NSDefaultRunLoopMode dequeue:YES];
         if(!e) break;
         deadline=NSDate.distantPast;
-        if(e.window==w) {
+        if([e.window isKindOfClass:HoodPanel.class]) {
+            HoodPanel *target=(HoodPanel *)e.window;
+            HoodInput pending=target.pendingInput;
             switch(e.type) {
-                case NSEventTypeLeftMouseDown: input->pressed=1; break;
-                case NSEventTypeLeftMouseUp: input->released=1; break;
-                case NSEventTypeRightMouseUp: input->right=1; break;
-                case NSEventTypeScrollWheel: input->wheel+=e.scrollingDeltaY/(e.hasPreciseScrollingDeltas?10:1); break;
-                case NSEventTypeKeyDown: if(e.keyCode==53) input->escape=1; break;
+                case NSEventTypeLeftMouseDown: pending.pressed=1; break;
+                case NSEventTypeLeftMouseUp: pending.released=1; break;
+                case NSEventTypeRightMouseUp: pending.right=1; break;
+                case NSEventTypeScrollWheel: pending.wheel+=e.scrollingDeltaY/(e.hasPreciseScrollingDeltas?10:1); break;
+                case NSEventTypeKeyDown: if(e.keyCode==53) pending.escape=1; break;
                 default: break;
             }
+            target.pendingInput=pending;
         }
         [NSApp sendEvent:e];
+    }
+    if(w) {
+        *input=w.pendingInput;
+        w.pendingInput=(HoodInput){0};
     }
     input->down=([NSEvent pressedMouseButtons]&1)!=0;
     [NSApp updateWindows];
@@ -366,4 +382,22 @@ void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,
     label.textColor=hood_text_color([NSColor colorWithCGColor:w.contentView.layer.backgroundColor]);
     label.frame=NSMakeRect(10,w.list?height-textHeight-4:4,width-20,textHeight); w.level=host.level+1;
     if(!w.visible) [w orderFrontRegardless];
+}
+
+// NSScreen.screens starts with the primary display, unlike mainScreen which
+// follows the key window. Keep a missing selection intact for reconnection.
+void *hood_selected_screen(const char *selection, int32_t index) {
+    NSArray<NSScreen *> *screens=NSScreen.screens;
+    if(!screens.count) return NULL;
+    if(strcmp(selection,"all")==0)
+        return index>=0 && (NSUInteger)index<screens.count ? (__bridge void *)screens[index] : NULL;
+    if(index!=0) return NULL;
+    NSString *key=[NSString stringWithUTF8String:selection];
+    for(NSScreen *screen in screens)
+        if([hood_display_key(screen) caseInsensitiveCompare:key]==NSOrderedSame) return (__bridge void *)screen;
+    return (__bridge void *)screens.firstObject;
+}
+uint32_t hood_screen_id(void *handle) {
+    NSScreen *screen=(__bridge NSScreen *)handle;
+    return [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
 }

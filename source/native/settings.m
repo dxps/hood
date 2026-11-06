@@ -1,12 +1,14 @@
 #import <AppKit/AppKit.h>
 #include <math.h>
 #include <stdint.h>
+#import "displays.h"
 
 #ifndef HOOD_BUILD_VERSION
 #define HOOD_BUILD_VERSION "unknown"
 #endif
 
 typedef struct {
+    char display[37];
     int32_t edge, icon_size, corner_radius;
     uint32_t background_rgb;
     int32_t icon_gap, horizontal_margin, vertical_margin;
@@ -38,6 +40,7 @@ enum {
     HoodHoverAnimation,
     HoodLogin,
     HoodQuit,
+    HoodDisplay,
 };
 
 // The selected color is data, not the button's appearance. AppKit supplies the
@@ -129,10 +132,17 @@ enum {
 }
 @end
 
-@interface HoodSettingsController : NSObject <NSWindowDelegate>
+@interface HoodSettingsDocumentView : NSView
+@end
+@implementation HoodSettingsDocumentView
+- (BOOL)isFlipped { return YES; }
+@end
+
+@interface HoodSettingsController : NSObject <NSWindowDelegate, NSApplicationDelegate>
 @property HoodSettingsState state;
 @property HoodSettingsEvents events;
 @property NSWindow *window;
+@property NSArray *displayChoices;
 @property NSMutableDictionary<NSNumber *, NSControl *> *controls;
 @property NSMutableDictionary<NSNumber *, NSTextField *> *valueLabels;
 @property NSView *showAnimationRow;
@@ -223,12 +233,43 @@ static NSBox *hood_separator(void) {
     return checkbox;
 }
 
+- (void)refreshDisplays {
+    NSPopUpButton *popup=(NSPopUpButton *)self.controls[@(HoodDisplay)];
+    if(!popup) return;
+    NSMutableArray *choices=[NSMutableArray arrayWithObjects:@[@"Primary display",@""], @[@"All displays",@"all"], nil];
+    NSString *selected=[NSString stringWithUTF8String:self.state.display];
+    BOOL found=selected.length==0 || [selected isEqualToString:@"all"];
+    NSUInteger index=0;
+    for(NSScreen *screen in NSScreen.screens) {
+        NSString *key=hood_display_key(screen);
+        if(!key.length) continue;
+        NSString *name=[NSString stringWithFormat:@"%lu: %@",(unsigned long)++index,screen.localizedName];
+        [choices addObject:@[name,key]];
+        found |= [key caseInsensitiveCompare:selected]==NSOrderedSame;
+    }
+    if(!found) [choices addObject:@[@"Disconnected (using primary)",selected]];
+    if(![choices isEqualToArray:self.displayChoices]) {
+        self.displayChoices=choices;
+        [popup removeAllItems];
+        for(NSArray *choice in choices) {
+            [popup addItemWithTitle:choice[0]];
+            popup.lastItem.representedObject=choice[1];
+        }
+    }
+    for(NSMenuItem *item in popup.itemArray)
+        if([item.representedObject caseInsensitiveCompare:selected]==NSOrderedSame) [popup selectItem:item];
+}
+
 - (NSView *)settingsView {
     NSStackView *stack = [[NSStackView alloc] initWithFrame:NSMakeRect(0, 0, 500, 680)];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.alignment = NSLayoutAttributeLeading;
     stack.spacing = 5;
     stack.edgeInsets = NSEdgeInsetsMake(16, 18, 16, 18);
+
+    NSPopUpButton *display = [self popupWithTag:HoodDisplay titles:@[] values:@[]];
+    [stack addArrangedSubview:hood_row(@"Display", display)];
+    [self refreshDisplays];
 
     NSPopUpButton *show = [self popupWithTag:HoodAutoHide
         titles:@[@"Always", @"Auto-Hide"] values:@[@0, @1]];
@@ -301,7 +342,26 @@ static NSBox *hood_separator(void) {
     [doneRow addSubview:done];
     [doneRow.heightAnchor constraintEqualToConstant:34].active = YES;
     [stack addArrangedSubview:doneRow];
-    return stack;
+    // Let the full form determine document height instead of forcing its
+    // first rows above the tab when the controls exceed the viewport.
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 500, 680)];
+    scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.drawsBackground = NO;
+    HoodSettingsDocumentView *document = [[HoodSettingsDocumentView alloc] initWithFrame:NSZeroRect];
+    document.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [document addSubview:stack];
+    scroll.documentView = document;
+    [NSLayoutConstraint activateConstraints:@[
+        [document.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor],
+        [document.heightAnchor constraintGreaterThanOrEqualToAnchor:scroll.contentView.heightAnchor],
+        [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor],
+        [stack.topAnchor constraintEqualToAnchor:document.topAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:document.bottomAnchor],
+    ]];
+    return scroll;
 }
 
 - (NSView *)runtimeViewBundled:(BOOL)bundled loginAvailable:(BOOL)loginAvailable {
@@ -393,6 +453,7 @@ static NSBox *hood_separator(void) {
 
 - (void)applyState:(HoodSettingsState)state {
     self.state = state;
+    [self refreshDisplays];
     [self selectPopup:HoodEdge value:state.edge];
     [self setStepper:HoodIconSize value:state.icon_size];
     [self setStepper:HoodCornerRadius value:state.corner_radius];
@@ -422,6 +483,7 @@ static NSBox *hood_separator(void) {
 
 - (void)openBackgroundColor:(HoodHexColorButton *)sender {
     NSColorPanel *panel=NSColorPanel.sharedColorPanel;
+    panel.restorable=NO;
     panel.showsAlpha=NO;
     panel.color=sender.color;
     panel.continuous=YES;
@@ -439,7 +501,11 @@ static NSBox *hood_separator(void) {
 - (void)controlChanged:(NSControl *)sender {
     NSInteger value = 0;
     HoodSettingsState state = self.state;
-    if ([sender isKindOfClass:NSPopUpButton.class]) value = [self popupValue:(NSPopUpButton *)sender];
+    if(sender.tag==HoodDisplay) {
+        NSString *key=((NSPopUpButton *)sender).selectedItem.representedObject;
+        memset(state.display,0,sizeof(state.display));
+        [key getCString:state.display maxLength:sizeof(state.display) encoding:NSUTF8StringEncoding];
+    } else if ([sender isKindOfClass:NSPopUpButton.class]) value = [self popupValue:(NSPopUpButton *)sender];
     else if ([sender isKindOfClass:NSStepper.class]) value = sender.integerValue;
     else if ([sender isKindOfClass:NSButton.class]) value = ((NSButton *)sender).state == NSControlStateValueOn;
     switch (sender.tag) {
@@ -484,11 +550,18 @@ static NSBox *hood_separator(void) {
     self.events = events;
 }
 
+// Settings is a short-lived helper; only an explicit color-button click
+// should open the system Colors panel in a new session.
+- (BOOL)applicationShouldSaveSecureApplicationState:(NSApplication *)app { (void)app; return NO; }
+- (BOOL)applicationShouldRestoreSecureApplicationState:(NSApplication *)app { (void)app; return NO; }
+
 - (void)closeSettings:(id)sender { (void)sender; [self.window close]; }
 - (void)windowWillClose:(NSNotification *)notification {
     (void)notification;
-    NSColorPanel.sharedColorPanel.target=nil;
-    [NSColorPanel.sharedColorPanel orderOut:nil];
+    if(NSColorPanel.sharedColorPanelExists) {
+        NSColorPanel.sharedColorPanel.target=nil;
+        [NSColorPanel.sharedColorPanel orderOut:nil];
+    }
     HoodSettingsEvents events = self.events;
     events.closed = 1;
     self.events = events;
@@ -512,21 +585,23 @@ void *hood_settings_create(const HoodSettingsState *state, int bundled, int logi
     NSApp.mainMenu=menuBar;
     NSString *iconPath=[NSBundle.mainBundle pathForResource:@"Hood" ofType:@"icns"];
     if(iconPath) NSApp.applicationIconImage=[[NSImage alloc] initWithContentsOfFile:iconPath];
-    [NSApp finishLaunching];
-
     HoodSettingsController *controller = [HoodSettingsController new];
+    NSApp.delegate = controller;
+    [NSApp finishLaunching];
+    if(NSColorPanel.sharedColorPanelExists) [NSColorPanel.sharedColorPanel orderOut:nil];
     controller.controls = [NSMutableDictionary dictionary];
     controller.valueLabels = [NSMutableDictionary dictionary];
-    NSRect frame = NSMakeRect(0, 0, 550, 720);
+    NSRect frame = NSMakeRect(0, 0, 550, 755);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable
         backing:NSBackingStoreBuffered defer:NO];
+    window.restorable = NO;
     window.title = @"Hood Settings";
     window.releasedWhenClosed = NO;
     window.delegate = controller;
     controller.window = window;
 
-    NSTabView *tabs = [[NSTabView alloc] initWithFrame:NSMakeRect(15, 15, 520, 690)];
+    NSTabView *tabs = [[NSTabView alloc] initWithFrame:NSMakeRect(15, 15, 520, 725)];
     tabs.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
     NSTabViewItem *settingsTab = [[NSTabViewItem alloc] initWithIdentifier:@"settings"];
     settingsTab.label = @"Settings";
@@ -562,6 +637,7 @@ void hood_settings_poll(void *handle, HoodSettingsState *state, HoodSettingsEven
         [NSApp sendEvent:event];
     }
     [NSApp updateWindows];
+    [controller refreshDisplays];
     *state = controller.state;
     *events = controller.events;
     controller.events = (HoodSettingsEvents){0};

@@ -267,14 +267,7 @@ free_apps :: proc(apps: [dynamic]App) {
 	delete(apps)
 }
 
-shelf_frames :: proc(window: ^ns.Object, rows: int, settings: Settings) -> (resting, display: ns.Rect) {
-	screen := send(^ns.Screen, window, "screen")
-	if screen == nil {
-		screen = send(^ns.Screen, native_class("NSScreen"), "mainScreen")
-	}
-	if screen == nil {
-		return
-	}
+shelf_frames :: proc(screen: ^ns.Object, rows: int, settings: Settings) -> (resting, display: ns.Rect) {
 	available := send_rect((^ns.Object)(screen), "visibleFrame")
 	layout := shelf_layout(settings, rows)
 	width := ns.Float(layout.thickness)
@@ -310,6 +303,66 @@ when !#config(HOOD_UI_MODULE, false) {
 	}
 }
 
+Dock_State :: struct {
+	window: ^ns.Object,
+	screen_id: u32,
+	visibility: Shelf_Visibility,
+	scroll: f32,
+	tooltip: Tooltip,
+	hovered_id: u64,
+	hover_started: f64,
+	last_pointer: ns.Point,
+	redraw_until: f64,
+	needs_redraw: bool,
+	interaction: Shelf_Interaction,
+	hover_scales: map[u64]f32,
+}
+
+close_dock :: proc(dock: ^Dock_State) {
+	close_tooltip(&dock.tooltip)
+	hood_close(dock.window)
+	delete(dock.hover_scales)
+}
+
+sync_displays :: proc(docks: ^[dynamic]Dock_State, settings: Settings, count: int) {
+	selected := strings.clone_to_cstring(string_from_display(settings.display), context.temp_allocator)
+	ids: [dynamic]u32
+	defer delete(ids)
+	for index: i32 = 0; ; index += 1 {
+		screen := hood_selected_screen(selected, index)
+		if screen == nil { break }
+		id := hood_screen_id(screen)
+		append(&ids, id)
+		found := -1
+		for dock, i in docks^ {
+			if dock.screen_id == id { found = i; break }
+		}
+		if found < 0 {
+			window := hood_create()
+			if window == nil { continue }
+			append(docks, Dock_State{
+				window = window, screen_id = id,
+				visibility = {progress = 1, requested = true, showing = true},
+				last_pointer = {-1e9, -1e9},
+				hover_scales = make(map[u64]f32),
+			})
+			found = len(docks^) - 1
+		}
+		dock := &docks^[found]
+		old := dock.visibility.resting
+		dock.visibility.resting, dock.visibility.display = shelf_frames(screen, count, settings)
+		dock.needs_redraw = dock.needs_redraw || old != dock.visibility.resting
+	}
+	for i := len(docks^) - 1; i >= 0; i -= 1 {
+		found := false
+		for id in ids { if docks^[i].screen_id == id { found = true; break } }
+		if !found {
+			close_dock(&docks^[i])
+			ordered_remove(docks, i)
+		}
+	}
+}
+
 run_shelf :: proc() {
 	home, home_err := os.user_home_dir(context.allocator)
 	config_dir, config_path, pinned_path, order_path: string
@@ -335,12 +388,11 @@ run_shelf :: proc() {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
-	window := hood_create()
-	if window == nil {
-		fmt.eprintln("Hood could not create its native shelf window.")
-		return
+	docks: [dynamic]Dock_State
+	defer {
+		for &dock in docks { close_dock(&dock) }
+		delete(docks)
 	}
-	defer hood_close(window)
 	workspace := send(^ns.Object, native_class("NSWorkspace"), "sharedWorkspace")
 
 	apps: [dynamic]App
@@ -349,12 +401,6 @@ run_shelf :: proc() {
 	}
 	active_pid: i32
 	next_refresh, next_app_refresh: f64
-	visibility := Shelf_Visibility {
-		progress  = 1,
-		requested = true,
-		showing   = true,
-	}
-	scroll: f32
 	settings_process: os.Process
 	defer {
 		if settings_process.pid != 0 {
@@ -364,15 +410,8 @@ run_shelf :: proc() {
 	}
 	ui: Live_UI
 	defer close_live_ui(&ui)
-	tooltip: Tooltip
-	defer close_tooltip(&tooltip)
-	hovered_id: u64
-	hover_started: f64
-	last_pointer := ns.Point{-1e9, -1e9}
-	redraw_until: f64
 	startup_visible_until := hood_time() + 2
 	last_frame := hood_time()
-	input: Native_Input
 	wait: f64 = 0
 	for {
 		// Bound temporary Cocoa and Odin allocations to one event-loop iteration.
@@ -380,14 +419,12 @@ run_shelf :: proc() {
 		defer notify(frame_pool, "drain")
 		defer free_all(context.temp_allocator)
 
-		hood_poll(window, &input, wait)
-		if input.escape != 0 {
-			break
-		}
+		pump_input: Native_Input
+		hood_poll(nil, &pump_input, wait)
 		now := hood_time()
 		delta := min(now - last_frame, 0.05)
 		last_frame = now
-		wait = 1.0 / 60
+		wait = 0.04
 		redraw := false
 		if now >= next_app_refresh {
 			active_pid = refresh_apps(workspace, &apps, pinned_apps[:], app_order[:])
@@ -411,170 +448,176 @@ run_shelf :: proc() {
 					settings_process = {}
 				}
 			}
-			old_frame := visibility.resting
-			visibility.resting, visibility.display = shelf_frames(window, len(apps), settings)
-			redraw = redraw || old_frame != visibility.resting || settings_process.pid != 0
+			sync_displays(&docks, settings, len(apps))
+			redraw = redraw || settings_process.pid != 0
 			next_refresh = now + 0.25
 		}
 
 		frontmost := send(i32, send(^ns.Object, workspace, "frontmostApplication"), "processIdentifier")
 		redraw = redraw || frontmost != active_pid
 		active_pid = frontmost
-		was_hidden := visibility.hidden
-		interactive := update_shelf_visibility(
-			window,
-			&visibility,
-			settings,
-			now, delta,
-			keep_visible = now < startup_visible_until || settings_process.pid != 0 || hood_tooltip_active(tooltip.window) != 0,
-		)
-		if visibility.hidden {
-			hide_tooltip(&tooltip)
-			hovered_id = 0
-			// Keep Cocoa responsive and check the reveal edge without drawing or swapping buffers.
-			wait = 0.04
-			continue
-		}
-		if was_hidden {
-			next_app_refresh = 0
-		}
-		pointer := send(ns.Point, window, "mouseLocationOutsideOfEventStream")
-		bounds := send_rect(window, "frame").size
-		pointer_inside := pointer.x >= 0 && pointer.y >= 0 && pointer.x < bounds.width && pointer.y < bounds.height
-		previous_inside := last_pointer.x >= 0 && last_pointer.y >= 0 && last_pointer.x < bounds.width && last_pointer.y < bounds.height
-		if (pointer != last_pointer && (pointer_inside || previous_inside)) || input.down != 0 ||
-		   input.released != 0 || input.right != 0 ||
-		   f32(input.wheel) != 0 {
-			redraw_until = now + max(f64(settings.hover_animation_tenths) / 10, f64(settings.tooltip_delay_ms) / 1000) + 0.1
-		}
-		last_pointer = pointer
-		if !redraw && !was_hidden && tooltip.app_id == 0 && now > redraw_until &&
-		   (visibility.progress == 0 || visibility.progress == 1) && input.escape == 0 {
-			// Preserve the last frame; still pump input so clicks and reveal remain responsive.
-			wait = 0.04
-			continue
-		}
-		width, height := i32(bounds.width), i32(bounds.height)
-		layout := shelf_layout(settings, len(apps))
-		viewport := layout.horizontal ? width : height
-		max_scroll := f32(max(0, layout.length - viewport))
-		scroll = clamp(scroll - f32(input.wheel) * f32(layout.step), 0, max_scroll)
-		context_click := interactive && input.right != 0
-		if context_click {
-			hide_tooltip(&tooltip)
-		}
-		if input.escape != 0 {
-			break
-		}
-
-		result := ui_shelf(&ui, window, &input, f32(delta), apps[:], settings, width, height, scroll, context_click || !interactive)
-		if result.order_changed {
-			_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
-			if order_err != nil {
-				fmt.eprintfln("Could not save app order: %v", order_err)
+		for &dock in docks {
+			input: Native_Input
+			hood_poll(dock.window, &input, 0)
+			if input.escape != 0 { return }
+			dock_redraw := redraw || dock.needs_redraw
+			dock.needs_redraw = false
+			was_hidden := dock.visibility.hidden
+			interactive := update_shelf_visibility(
+				dock.window,
+				&dock.visibility,
+				settings,
+				now, delta,
+				keep_visible = now < startup_visible_until || settings_process.pid != 0 || hood_tooltip_active(dock.tooltip.window) != 0,
+			)
+			if dock.visibility.hidden {
+				hide_tooltip(&dock.tooltip)
+				dock.hovered_id = 0
+				// Keep Cocoa responsive and check the reveal edge without drawing or swapping buffers.
+				continue
 			}
-		}
-		menu_choice := Menu_Choice.None
-		if context_click {
-			context_app: ^App
-			for &app in apps {
-				if app.order_id == result.pointed_id {
-					context_app = &app
-					break
-				}
-			}
-			kept := context_app != nil && pinned_app_index(pinned_apps[:], context_app.bundle_id) >= 0
-			menu_choice = show_context_menu(window, context_app, kept)
-			if menu_choice == .Quit_App && context_app != nil && context_app.pid != 0 {
-				target := send(^ns.Object, native_class("NSRunningApplication"), "runningApplicationWithProcessIdentifier:", context_app.pid)
-				// Request a normal quit so the app can prompt to save documents.
-				send(ns.BOOL, target, "terminate")
+			if was_hidden {
 				next_app_refresh = 0
 			}
-			if menu_choice == .Keep_In_Dock && context_app != nil {
-				err := set_pinned_app(config_dir, pinned_path, &pinned_apps, context_app.bundle_id, !kept)
-				if err != nil {
-					fmt.eprintfln("Could not save pinned apps: %v", err)
-				} else {
-					next_app_refresh = 0
+			pointer := send(ns.Point, dock.window, "mouseLocationOutsideOfEventStream")
+			bounds := send_rect(dock.window, "frame").size
+			pointer_inside := pointer.x >= 0 && pointer.y >= 0 && pointer.x < bounds.width && pointer.y < bounds.height
+			previous_inside := dock.last_pointer.x >= 0 && dock.last_pointer.y >= 0 && dock.last_pointer.x < bounds.width && dock.last_pointer.y < bounds.height
+			if (pointer != dock.last_pointer && (pointer_inside || previous_inside)) || input.down != 0 ||
+			   input.released != 0 || input.right != 0 ||
+			   f32(input.wheel) != 0 {
+				dock.redraw_until = now + max(f64(settings.hover_animation_tenths) / 10, f64(settings.tooltip_delay_ms) / 1000) + 0.1
+			}
+			dock.last_pointer = pointer
+			if !dock_redraw && !was_hidden && dock.tooltip.app_id == 0 && now > dock.redraw_until &&
+			   (dock.visibility.progress == 0 || dock.visibility.progress == 1) && input.escape == 0 {
+				// Preserve the last frame; still pump input so clicks and reveal remain responsive.
+				continue
+			}
+			wait = min(wait, 1.0 / 60)
+			width, height := i32(bounds.width), i32(bounds.height)
+			layout := shelf_layout(settings, len(apps))
+			viewport := layout.horizontal ? width : height
+			max_scroll := f32(max(0, layout.length - viewport))
+			dock.scroll = clamp(dock.scroll - f32(input.wheel) * f32(layout.step), 0, max_scroll)
+			context_click := interactive && input.right != 0
+			if context_click {
+				hide_tooltip(&dock.tooltip)
+			}
+
+			for &app in apps { app.hover_scale = dock.hover_scales[app.order_id] }
+			clear(&dock.hover_scales)
+			result := ui_shelf(&ui, dock.window, &dock.interaction, &input, f32(delta), apps[:], settings, width, height, dock.scroll, context_click || !interactive)
+			for app in apps { dock.hover_scales[app.order_id] = app.hover_scale }
+			if result.order_changed {
+				for &other in docks { other.needs_redraw = true }
+				_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
+				if order_err != nil {
+					fmt.eprintfln("Could not save app order: %v", order_err)
 				}
 			}
-		}
-		open_settings := menu_choice == .Settings
-		if result.clicked_id != 0 {
-			clicked: ^App
-			for &app in apps {
-				if app.order_id == result.clicked_id {
-					clicked = &app
-					break
-				}
-			}
-			if clicked != nil && clicked.pid != 0 {
-				target := send(
-					^ns.Object,
-					native_class("NSRunningApplication"),
-					"runningApplicationWithProcessIdentifier:",
-					clicked.pid,
-				)
-				hidden := send(ns.BOOL, target, "isHidden")
-				active := send(ns.BOOL, target, "isActive") || clicked.pid == active_pid
-				visible := application_has_visible_window(clicked.pid)
-				activate_all := ns.ApplicationActivationOptions{.ActivateAllWindows}
-				if hidden {
-					send(ns.BOOL, target, "unhide")
-					send(ns.BOOL, target, "activateWithOptions:", activate_all)
-				} else if active && visible {
-					send(ns.BOOL, target, "hide")
-				} else {
-					if !visible {
-						reopen_application(workspace, clicked.bundle_id)
+			menu_choice := Menu_Choice.None
+			if context_click {
+				context_app: ^App
+				for &app in apps {
+					if app.order_id == result.pointed_id {
+						context_app = &app
+						break
 					}
-					send(ns.BOOL, target, "activateWithOptions:", activate_all)
 				}
-			} else if clicked != nil && clicked.bundle_id != "" {
-				identifier := send(
-					^ns.Object,
-					native_class("NSString"),
-					"stringWithUTF8String:",
-					strings.clone_to_cstring(clicked.bundle_id, context.temp_allocator),
-				)
-				url := send(^ns.Object, workspace, "URLForApplicationWithBundleIdentifier:", identifier)
-				if url != nil {
-					send(ns.BOOL, workspace, "openURL:", url)
+				kept := context_app != nil && pinned_app_index(pinned_apps[:], context_app.bundle_id) >= 0
+				menu_choice = show_context_menu(dock.window, context_app, kept)
+				if menu_choice == .Quit_App && context_app != nil && context_app.pid != 0 {
+					target := send(^ns.Object, native_class("NSRunningApplication"), "runningApplicationWithProcessIdentifier:", context_app.pid)
+					// Request a normal quit so the app can prompt to save documents.
+					send(ns.BOOL, target, "terminate")
 					next_app_refresh = 0
 				}
-			}
-		}
-		hovered := result.hovered
-		if hovered.order_id != hovered_id {
-			hovered_id = hovered.order_id
-			hover_started = hood_time()
-		}
-		if hovered.name != "" && hood_time() - hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {
-			show_tooltip(&tooltip, window, hovered, result.tooltip_center, settings)
-		} else if context_click || open_settings || hovered.order_id != 0 || (input.down != 0 && pointer_inside) || hood_tooltip_active(tooltip.window) == 0 {
-			hide_tooltip(&tooltip)
-		}
-		if open_settings {
-			fmt.eprintln("Hood: Settings selected")
-			if settings_process.pid != 0 {
-				target := send(
-					^ns.Object,
-					native_class("NSRunningApplication"),
-					"runningApplicationWithProcessIdentifier:",
-					i32(settings_process.pid),
-				)
-				send(ns.BOOL, target, "activateWithOptions:", uint(0))
-			} else if executable_err == nil {
-				err: os.Error
-				settings_process, err = os.process_start({command = {executable, "--settings"}, stderr = os.stderr})
-				if err != nil {
-					fmt.eprintfln("Could not open Hood Settings: %v", err)
-				} else {
-					fmt.eprintfln("Hood: Settings started (PID %v)", settings_process.pid)
+				if menu_choice == .Keep_In_Dock && context_app != nil {
+					err := set_pinned_app(config_dir, pinned_path, &pinned_apps, context_app.bundle_id, !kept)
+					if err != nil {
+						fmt.eprintfln("Could not save pinned apps: %v", err)
+					} else {
+						next_app_refresh = 0
+					}
 				}
-			} else {
-				fmt.eprintfln("Could not locate Hood executable: %v", executable_err)
+			}
+			open_settings := menu_choice == .Settings
+			if result.clicked_id != 0 {
+				clicked: ^App
+				for &app in apps {
+					if app.order_id == result.clicked_id {
+						clicked = &app
+						break
+					}
+				}
+				if clicked != nil && clicked.pid != 0 {
+					target := send(
+						^ns.Object,
+						native_class("NSRunningApplication"),
+						"runningApplicationWithProcessIdentifier:",
+						clicked.pid,
+					)
+					hidden := send(ns.BOOL, target, "isHidden")
+					active := send(ns.BOOL, target, "isActive") || clicked.pid == active_pid
+					visible := application_has_visible_window(clicked.pid)
+					activate_all := ns.ApplicationActivationOptions{.ActivateAllWindows}
+					if hidden {
+						send(ns.BOOL, target, "unhide")
+						send(ns.BOOL, target, "activateWithOptions:", activate_all)
+					} else if active && visible {
+						send(ns.BOOL, target, "hide")
+					} else {
+						if !visible {
+							reopen_application(workspace, clicked.bundle_id)
+						}
+						send(ns.BOOL, target, "activateWithOptions:", activate_all)
+					}
+				} else if clicked != nil && clicked.bundle_id != "" {
+					identifier := send(
+						^ns.Object,
+						native_class("NSString"),
+						"stringWithUTF8String:",
+						strings.clone_to_cstring(clicked.bundle_id, context.temp_allocator),
+					)
+					url := send(^ns.Object, workspace, "URLForApplicationWithBundleIdentifier:", identifier)
+					if url != nil {
+						send(ns.BOOL, workspace, "openURL:", url)
+						next_app_refresh = 0
+					}
+				}
+			}
+			hovered := result.hovered
+			if hovered.order_id != dock.hovered_id {
+				dock.hovered_id = hovered.order_id
+				dock.hover_started = hood_time()
+			}
+			if hovered.name != "" && hood_time() - dock.hover_started >= f64(settings.tooltip_delay_ms) / 1000 && !open_settings {
+				show_tooltip(&dock.tooltip, dock.window, hovered, result.tooltip_center, settings)
+			} else if context_click || open_settings || hovered.order_id != 0 || (input.down != 0 && pointer_inside) || hood_tooltip_active(dock.tooltip.window) == 0 {
+				hide_tooltip(&dock.tooltip)
+			}
+			if open_settings {
+				fmt.eprintln("Hood: Settings selected")
+				if settings_process.pid != 0 {
+					target := send(
+						^ns.Object,
+						native_class("NSRunningApplication"),
+						"runningApplicationWithProcessIdentifier:",
+						i32(settings_process.pid),
+					)
+					send(ns.BOOL, target, "activateWithOptions:", uint(0))
+				} else if executable_err == nil {
+					err: os.Error
+					settings_process, err = os.process_start({command = {executable, "--settings"}, stderr = os.stderr})
+					if err != nil {
+						fmt.eprintfln("Could not open Hood Settings: %v", err)
+					} else {
+						fmt.eprintfln("Hood: Settings started (PID %v)", settings_process.pid)
+					}
+				} else {
+					fmt.eprintfln("Could not locate Hood executable: %v", executable_err)
+				}
 			}
 		}
 	}

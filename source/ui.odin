@@ -43,6 +43,7 @@ wave_icon_rect :: proc(
 
 draw_shelf :: proc(
 	window: ^ns.Object,
+	interaction: ^Shelf_Interaction,
 	input: ^Native_Input,
 	delta: f32,
 	apps: []App,
@@ -53,9 +54,6 @@ draw_shelf :: proc(
 ) -> (
 	result: Shelf_Frame,
 ) {
-	@(static) drag_id: u64
-	@(static) drag_start: rl.Vector2
-	@(static) dragging: bool
 
 	layout := shelf_layout(settings, len(apps))
 	// Cocoa can report the pointer over a newly revealed window before GLFW
@@ -121,26 +119,26 @@ draw_shelf :: proc(
 		}
 	}
 	if (input.pressed != 0) && hovered_index >= 0 {
-		drag_id = apps[hovered_index].order_id
-		drag_start = mouse
-		dragging = false
+		interaction.drag_id = apps[hovered_index].order_id
+		interaction.drag_start = mouse
+		interaction.dragging = false
 	}
-	if drag_id != 0 && (input.down != 0) {
-		delta := mouse - drag_start
-		if !dragging && delta.x * delta.x + delta.y * delta.y >= 16 {
-			dragging = true
+	if interaction.drag_id != 0 && (input.down != 0) {
+		delta := mouse - interaction.drag_start
+		if !interaction.dragging && delta.x * delta.x + delta.y * delta.y >= 16 {
+			interaction.dragging = true
 		}
-		if dragging {
+		if interaction.dragging {
 			from := -1
 			for app, index in apps {
-				if app.order_id == drag_id {
+				if app.order_id == interaction.drag_id {
 					from = index
 					break
 				}
 			}
 			if from < 0 {
-				drag_id = 0
-				dragging = false
+				interaction.drag_id = 0
+				interaction.dragging = false
 			} else {
 				axis := mouse.y if !layout.horizontal else mouse.x
 				to := int(
@@ -166,16 +164,16 @@ draw_shelf :: proc(
 			}
 		}
 	}
-	was_dragging := dragging
-	if drag_id != 0 && (input.released != 0) {
-		if !dragging && hovered_index >= 0 && apps[hovered_index].order_id == drag_id {
-			result.clicked_id = drag_id
+	was_dragging := interaction.dragging
+	if interaction.drag_id != 0 && (input.released != 0) {
+		if !interaction.dragging && hovered_index >= 0 && apps[hovered_index].order_id == interaction.drag_id {
+			result.clicked_id = interaction.drag_id
 		}
-		drag_id = 0
-		dragging = false
-	} else if drag_id != 0 && !(input.down != 0) {
-		drag_id = 0
-		dragging = false
+		interaction.drag_id = 0
+		interaction.dragging = false
+	} else if interaction.drag_id != 0 && !(input.down != 0) {
+		interaction.drag_id = 0
+		interaction.dragging = false
 	}
 
 	raised_icon: rawptr
@@ -222,7 +220,7 @@ draw_shelf :: proc(
 		if hover {
 			result.tooltip_center = {icon.x + icon.width / 2, icon.y + icon.height / 2}
 		}
-		if was_dragging && app.order_id == drag_id {
+		if was_dragging && app.order_id == interaction.drag_id {
 			icon.x = mouse.x - icon.width / 2
 			icon.y = mouse.y - icon.height / 2
 			raised_icon = app.icon
