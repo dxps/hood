@@ -102,7 +102,7 @@ show_context_menu :: proc(window: ^ns.Object, app: ^App, kept: bool) -> Menu_Cho
 	}
 	item := send(^ns.Object, native_class("NSMenuItem"), "new")
 	defer notify(item, "release")
-	set_menu_item_title(item, "Settings", "\u00a0\u00a0Settings\u00a0\u00a0")
+	set_menu_item_title(item, "Dock Settings", "\u00a0\u00a0Dock Settings\u00a0\u00a0")
 	notify(item, "setTag:", int(Menu_Choice.Settings))
 	notify(item, "setAction:", action)
 	notify(item, "setTarget:", target)

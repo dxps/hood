@@ -306,8 +306,8 @@ static NSBox *hood_separator(void) {
 
 - (NSView *)runtimeViewBundled:(BOOL)bundled loginAvailable:(BOOL)loginAvailable {
     NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 620)];
-    NSTextField *version = hood_label(@"App version: " HOOD_BUILD_VERSION);
-    version.frame = NSMakeRect(20, 592, 460, 20);
+    NSTextField *version = hood_label(@"Version: " HOOD_BUILD_VERSION);
+    version.frame = NSMakeRect(20, 584, 460, 20);
     [view addSubview:version];
     self.loginButton = [[HoodFastTooltipButton alloc] initWithFrame:NSZeroRect];
     self.loginButton.buttonType = NSButtonTypeSwitch;
@@ -315,47 +315,45 @@ static NSBox *hood_separator(void) {
     self.loginButton.target = self;
     self.loginButton.action = @selector(runtimeAction:);
     self.loginButton.tag = HoodLogin;
-    self.loginButton.frame = NSMakeRect(20, 560, 250, 24);
+    self.loginButton.frame = NSMakeRect(20, 540, 250, 24);
     self.loginButton.enabled = bundled && loginAvailable;
     ((HoodFastTooltipButton *)self.loginButton).fastToolTip = self.loginButton.enabled ? nil : @"Available when running Hood.app.";
     [view addSubview:self.loginButton];
 
     NSTextField *loginDetail = hood_label(@"Start it automatically at login time.");
-    loginDetail.frame = NSMakeRect(20, 532, 460, 20);
+    loginDetail.frame = NSMakeRect(20, 516, 460, 20);
     loginDetail.textColor = NSColor.secondaryLabelColor;
     [view addSubview:loginDetail];
 
     self.loginStatus = hood_label(@"");
-    self.loginStatus.frame = NSMakeRect(20, 504, 460, 20);
+    self.loginStatus.frame = NSMakeRect(20, 488, 460, 20);
     self.loginStatus.textColor = NSColor.secondaryLabelColor;
     [view addSubview:self.loginStatus];
 
-    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(20, 484, 460, 9)];
+    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(20, 468, 460, 9)];
     separator.boxType = NSBoxSeparator;
     [view addSubview:separator];
 
-    NSTextField *stats = hood_label(@"Stats");
-    stats.frame = NSMakeRect(20, 448, 460, 22);
+    NSTextField *stats = hood_label(@"Usage");
+    stats.frame = NSMakeRect(20, 432, 460, 22);
     stats.font = [NSFont boldSystemFontOfSize:15];
     [view addSubview:stats];
 
     NSTextField *statsDetail = hood_label(@"These statistics are updated every second.");
-    statsDetail.frame = NSMakeRect(20, 420, 460, 20);
+    statsDetail.frame = NSMakeRect(20, 404, 460, 20);
     statsDetail.textColor = NSColor.secondaryLabelColor;
     [view addSubview:statsDetail];
 
-    self.cpuLabel = hood_label(@"CPU usage: unavailable");
-    self.cpuLabel.frame = NSMakeRect(20, 376, 460, 22);
-    self.cpuLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+    self.cpuLabel = hood_label(@"CPU: unavailable");
+    self.cpuLabel.frame = NSMakeRect(20, 360, 460, 22);
     [view addSubview:self.cpuLabel];
 
-    self.memoryLabel = hood_label(@"Memory usage: unavailable");
-    self.memoryLabel.frame = NSMakeRect(20, 332, 460, 22);
-    self.memoryLabel.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
+    self.memoryLabel = hood_label(@"RAM: unavailable");
+    self.memoryLabel.frame = NSMakeRect(20, 316, 460, 22);
     [view addSubview:self.memoryLabel];
 
     NSTextField *memoryDetail = hood_label(@"It includes the graphics memory.");
-    memoryDetail.frame = NSMakeRect(20, 304, 460, 20);
+    memoryDetail.frame = NSMakeRect(20, 288, 460, 20);
     memoryDetail.textColor = NSColor.secondaryLabelColor;
     [view addSubview:memoryDetail];
 
@@ -367,8 +365,12 @@ static NSBox *hood_separator(void) {
     quit.layer.cornerRadius = 6;
     quit.contentTintColor = NSColor.whiteColor;
     quit.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
-    quit.frame = NSMakeRect(370, 247, 110, 28);
+    quit.frame = NSMakeRect(370, 231, 110, 28);
     [view addSubview:quit];
+    // Keep the content anchored to the top when the tab resizes this view.
+    for (NSView *child in view.subviews) {
+        child.autoresizingMask = NSViewMinYMargin;
+    }
     return view;
 }
 
@@ -579,11 +581,11 @@ void hood_settings_set_runtime(void *handle, uint64_t memoryBytes, double cpuPer
         int cpuAvailable, int bundled, int loginAvailable, int loginEnabled, int loginPending, int loginFailed) {
     HoodSettingsController *controller = (__bridge HoodSettingsController *)handle;
     controller.memoryLabel.stringValue = available
-        ? [NSString stringWithFormat:@"Memory usage: %.1f MB", memoryBytes / 1000000.0]
-        : @"Memory usage: unavailable";
+        ? [NSString stringWithFormat:@"RAM: %.1f MB", memoryBytes / 1000000.0]
+        : @"RAM: unavailable";
     controller.cpuLabel.stringValue = cpuAvailable
-        ? [NSString stringWithFormat:@"CPU usage: %.1f%%", cpuPercent]
-        : @"CPU usage: unavailable";
+        ? [NSString stringWithFormat:@"CPU: %.1f%%", cpuPercent]
+        : @"CPU: unavailable";
     controller.loginButton.enabled = bundled && loginAvailable;
     ((HoodFastTooltipButton *)controller.loginButton).fastToolTip = controller.loginButton.enabled ? nil : @"Available when running Hood.app.";
     controller.loginButton.state = loginEnabled || loginPending ? NSControlStateValueOn : NSControlStateValueOff;
