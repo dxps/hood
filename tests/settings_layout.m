@@ -5,14 +5,27 @@
 static void check_layout(HoodSettingsController *controller) {
     [controller.window.contentView layoutSubtreeIfNeeded];
     NSPopUpButton *display=(NSPopUpButton *)controller.controls[@(HoodDisplay)];
-    NSScrollView *scroll=display.enclosingScrollView;
-    assert(scroll);
-    NSRect rect=[display convertRect:display.bounds toView:scroll.contentView];
-    assert(NSContainsRect(scroll.contentView.bounds,rect));
+    assert(!display.enclosingScrollView);
+    NSTabView *tabs=(NSTabView *)controller.window.contentView.subviews.firstObject;
+    NSView *form=tabs.selectedTabViewItem.view;
+    for(NSControl *control in controller.controls.allValues) {
+        if(control.hidden || control.superview.hidden) continue;
+        NSRect rect=[control convertRect:control.bounds toView:form];
+        assert(NSContainsRect(form.bounds,rect));
+    }
+    NSControl *icons=controller.controls[@(HoodIconSize)];
+    assert([icons convertPoint:NSZeroPoint toView:form].x > NSMidX(form.bounds));
+    assert([display convertPoint:NSZeroPoint toView:form].x < NSMidX(form.bounds));
     assert(display.numberOfItems>=2);
     assert([display.itemArray[0].title isEqualToString:@"Primary display"]);
     assert([display.itemArray[1].title isEqualToString:@"All displays"]);
-    assert(scroll.documentView.frame.size.height>=scroll.contentSize.height);
+    [tabs selectTabViewItemAtIndex:1];
+    [controller.window.contentView layoutSubtreeIfNeeded];
+    NSView *runtime=tabs.selectedTabViewItem.view;
+    assert(controller.cpuLabel.frame.origin.x > NSMaxX(controller.loginButton.frame));
+    assert(controller.loginButton.frame.origin.x < NSMidX(runtime.bounds));
+    for(NSView *child in runtime.subviews) assert(NSContainsRect(runtime.bounds,child.frame));
+    [tabs selectTabViewItemAtIndex:0];
 }
 
 int main(void) {

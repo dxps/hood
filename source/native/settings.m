@@ -135,12 +135,6 @@ enum {
 }
 @end
 
-@interface HoodSettingsDocumentView : NSView
-@end
-@implementation HoodSettingsDocumentView
-- (BOOL)isFlipped { return YES; }
-@end
-
 @interface HoodSettingsController : NSObject <NSWindowDelegate, NSApplicationDelegate>
 @property HoodSettingsState state;
 @property HoodSettingsEvents events;
@@ -181,6 +175,7 @@ static NSView *hood_header(NSString *title) {
     label.font = [NSFont boldSystemFontOfSize:15];
     NSView *row = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 28)];
     label.frame = NSMakeRect(0, 4, 500, 21);
+    label.autoresizingMask = NSViewWidthSizable;
     [row addSubview:label];
     [row.heightAnchor constraintEqualToConstant:28].active = YES;
     return row;
@@ -212,8 +207,8 @@ static NSBox *hood_separator(void) {
     NSView *container = [[NSView alloc] initWithFrame:NSZeroRect];
     NSTextField *value = hood_label(@"");
     value.alignment = NSTextAlignmentRight;
-    value.frame = NSMakeRect(0, 5, 150, 20);
-    NSStepper *stepper = [[NSStepper alloc] initWithFrame:NSMakeRect(156, 3, 19, 24)];
+    value.frame = NSMakeRect(0, 5, 60, 20);
+    NSStepper *stepper = [[NSStepper alloc] initWithFrame:NSMakeRect(66, 3, 19, 24)];
     stepper.minValue = minimum;
     stepper.maxValue = maximum;
     stepper.increment = increment;
@@ -264,11 +259,24 @@ static NSBox *hood_separator(void) {
 }
 
 - (NSView *)settingsView {
-    NSStackView *stack = [[NSStackView alloc] initWithFrame:NSMakeRect(0, 0, 500, 680)];
-    stack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    stack.alignment = NSLayoutAttributeLeading;
-    stack.spacing = 5;
-    stack.edgeInsets = NSEdgeInsetsMake(16, 18, 16, 18);
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 880, 450)];
+    NSStackView *left = [[NSStackView alloc] initWithFrame:NSZeroRect];
+    NSStackView *right = [[NSStackView alloc] initWithFrame:NSZeroRect];
+    for(NSStackView *column in @[left,right]) {
+        column.orientation = NSUserInterfaceLayoutOrientationVertical;
+        column.alignment = NSLayoutAttributeLeading;
+        column.spacing = 5;
+        column.translatesAutoresizingMaskIntoConstraints = NO;
+        [view addSubview:column];
+        [column.topAnchor constraintEqualToAnchor:view.topAnchor constant:16].active = YES;
+    }
+    [NSLayoutConstraint activateConstraints:@[
+        [left.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:18],
+        [right.leadingAnchor constraintEqualToAnchor:left.trailingAnchor constant:24],
+        [right.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-18],
+        [left.widthAnchor constraintEqualToConstant:370],
+    ]];
+    NSStackView *stack = left;
 
     NSPopUpButton *display = [self popupWithTag:HoodDisplay titles:@[] values:@[]];
     [stack addArrangedSubview:hood_row(@"Display", display)];
@@ -309,7 +317,7 @@ static NSBox *hood_separator(void) {
     self.controls[@(HoodBackground)] = color;
     [stack addArrangedSubview:hood_row(@"Background color", color)];
 
-    [stack addArrangedSubview:hood_separator()];
+    stack = right;
     [stack addArrangedSubview:hood_header(@"Icons")];
     [stack addArrangedSubview:hood_row(@"Size", [self stepperWithTag:HoodIconSize minimum:24 maximum:48 increment:4])];
     [stack addArrangedSubview:hood_row(@"Magnification with wave effect", [self checkboxWithTag:HoodHoverWave])];
@@ -334,43 +342,21 @@ static NSBox *hood_separator(void) {
     self.saveError = hood_label(@"Could not save hood.toml");
     self.saveError.textColor = NSColor.systemRedColor;
     self.saveError.hidden = YES;
-    [self.saveError.heightAnchor constraintEqualToConstant:20].active = YES;
-    [stack addArrangedSubview:self.saveError];
+    self.saveError.frame = NSMakeRect(18, 20, 600, 20);
+    [view addSubview:self.saveError];
 
     NSButton *done = [NSButton buttonWithTitle:@"OK" target:self action:@selector(closeSettings:)];
     done.keyEquivalent = @"\r";
-    NSView *doneRow = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 34)];
-    done.frame = NSMakeRect(420, 2, 80, 30);
+    done.frame = NSMakeRect(782, 14, 80, 30);
     done.autoresizingMask = NSViewMinXMargin;
-    [doneRow addSubview:done];
-    [doneRow.heightAnchor constraintEqualToConstant:34].active = YES;
-    [stack addArrangedSubview:doneRow];
-    // Let the full form determine document height instead of forcing its
-    // first rows above the tab when the controls exceed the viewport.
-    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 500, 680)];
-    scroll.hasVerticalScroller = YES;
-    scroll.autohidesScrollers = YES;
-    scroll.drawsBackground = NO;
-    HoodSettingsDocumentView *document = [[HoodSettingsDocumentView alloc] initWithFrame:NSZeroRect];
-    document.translatesAutoresizingMaskIntoConstraints = NO;
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [document addSubview:stack];
-    scroll.documentView = document;
-    [NSLayoutConstraint activateConstraints:@[
-        [document.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor],
-        [document.heightAnchor constraintGreaterThanOrEqualToAnchor:scroll.contentView.heightAnchor],
-        [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor],
-        [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor],
-        [stack.topAnchor constraintEqualToAnchor:document.topAnchor],
-        [stack.bottomAnchor constraintEqualToAnchor:document.bottomAnchor],
-    ]];
-    return scroll;
+    [view addSubview:done];
+    return view;
 }
 
 - (NSView *)runtimeViewBundled:(BOOL)bundled loginAvailable:(BOOL)loginAvailable {
-    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 620)];
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 880, 450)];
     NSTextField *version = hood_label(@"Version: " HOOD_BUILD_VERSION " (" HOOD_BUILD_TYPE ")");
-    version.frame = NSMakeRect(20, 584, 460, 20);
+    version.frame = NSMakeRect(18, 414, 370, 20);
     [view addSubview:version];
     self.loginButton = [[HoodFastTooltipButton alloc] initWithFrame:NSZeroRect];
     self.loginButton.buttonType = NSButtonTypeSwitch;
@@ -378,45 +364,41 @@ static NSBox *hood_separator(void) {
     self.loginButton.target = self;
     self.loginButton.action = @selector(runtimeAction:);
     self.loginButton.tag = HoodLogin;
-    self.loginButton.frame = NSMakeRect(20, 540, 250, 24);
+    self.loginButton.frame = NSMakeRect(18, 370, 250, 24);
     self.loginButton.enabled = bundled && loginAvailable;
     ((HoodFastTooltipButton *)self.loginButton).fastToolTip = self.loginButton.enabled ? nil : @"Available when running Hood.app.";
     [view addSubview:self.loginButton];
 
     NSTextField *loginDetail = hood_label(@"Start it automatically at login time.");
-    loginDetail.frame = NSMakeRect(20, 516, 460, 20);
+    loginDetail.frame = NSMakeRect(18, 346, 370, 20);
     loginDetail.textColor = NSColor.secondaryLabelColor;
     [view addSubview:loginDetail];
 
     self.loginStatus = hood_label(@"");
-    self.loginStatus.frame = NSMakeRect(20, 488, 460, 20);
+    self.loginStatus.frame = NSMakeRect(18, 318, 370, 20);
     self.loginStatus.textColor = NSColor.secondaryLabelColor;
     [view addSubview:self.loginStatus];
 
-    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(20, 468, 460, 9)];
-    separator.boxType = NSBoxSeparator;
-    [view addSubview:separator];
-
     NSTextField *stats = hood_label(@"Usage");
-    stats.frame = NSMakeRect(20, 432, 460, 22);
+    stats.frame = NSMakeRect(412, 412, 450, 22);
     stats.font = [NSFont boldSystemFontOfSize:15];
     [view addSubview:stats];
 
     NSTextField *statsDetail = hood_label(@"These statistics are updated every second.");
-    statsDetail.frame = NSMakeRect(20, 404, 460, 20);
+    statsDetail.frame = NSMakeRect(412, 384, 450, 20);
     statsDetail.textColor = NSColor.secondaryLabelColor;
     [view addSubview:statsDetail];
 
     self.cpuLabel = hood_label(@"CPU: unavailable");
-    self.cpuLabel.frame = NSMakeRect(20, 360, 460, 22);
+    self.cpuLabel.frame = NSMakeRect(412, 340, 450, 22);
     [view addSubview:self.cpuLabel];
 
     self.memoryLabel = hood_label(@"RAM: unavailable");
-    self.memoryLabel.frame = NSMakeRect(20, 316, 460, 22);
+    self.memoryLabel.frame = NSMakeRect(412, 296, 450, 22);
     [view addSubview:self.memoryLabel];
 
     NSTextField *memoryDetail = hood_label(@"It includes the graphics memory.");
-    memoryDetail.frame = NSMakeRect(20, 288, 460, 20);
+    memoryDetail.frame = NSMakeRect(412, 268, 450, 20);
     memoryDetail.textColor = NSColor.secondaryLabelColor;
     [view addSubview:memoryDetail];
 
@@ -428,12 +410,18 @@ static NSBox *hood_separator(void) {
     quit.layer.cornerRadius = 6;
     quit.contentTintColor = NSColor.whiteColor;
     quit.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
-    quit.frame = NSMakeRect(370, 231, 110, 28);
+    quit.frame = NSMakeRect(18, 15, 110, 28);
     [view addSubview:quit];
     // Keep the content anchored to the top when the tab resizes this view.
     for (NSView *child in view.subviews) {
         child.autoresizingMask = NSViewMinYMargin;
     }
+    quit.autoresizingMask = NSViewMaxXMargin | NSViewMaxYMargin;
+    NSButton *done = [NSButton buttonWithTitle:@"OK" target:self action:@selector(closeSettings:)];
+    done.keyEquivalent = @"\r";
+    done.frame = NSMakeRect(782, 14, 80, 30);
+    done.autoresizingMask = NSViewMinXMargin;
+    [view addSubview:done];
     return view;
 }
 
@@ -594,7 +582,7 @@ void *hood_settings_create(const HoodSettingsState *state, int bundled, int logi
     if(NSColorPanel.sharedColorPanelExists) [NSColorPanel.sharedColorPanel orderOut:nil];
     controller.controls = [NSMutableDictionary dictionary];
     controller.valueLabels = [NSMutableDictionary dictionary];
-    NSRect frame = NSMakeRect(0, 0, 550, 755);
+    NSRect frame = NSMakeRect(0, 0, 930, 520);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
         styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable
         backing:NSBackingStoreBuffered defer:NO];
@@ -604,7 +592,7 @@ void *hood_settings_create(const HoodSettingsState *state, int bundled, int logi
     window.delegate = controller;
     controller.window = window;
 
-    NSTabView *tabs = [[NSTabView alloc] initWithFrame:NSMakeRect(15, 15, 520, 725)];
+    NSTabView *tabs = [[NSTabView alloc] initWithFrame:NSMakeRect(15, 15, 900, 490)];
     tabs.autoresizingMask = NSViewWidthSizable|NSViewHeightSizable;
     NSTabViewItem *settingsTab = [[NSTabViewItem alloc] initWithIdentifier:@"settings"];
     settingsTab.label = @"Settings";
