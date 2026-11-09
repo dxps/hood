@@ -192,6 +192,12 @@ static id hood_ax_value(AXUIElementRef element, CFStringRef attribute) {
     if(AXUIElementCopyAttributeValue(element,attribute,&value)!=kAXErrorSuccess) return nil;
     return CFBridgingRelease(value);
 }
+static BOOL hood_ax_standard_window(AXUIElementRef element) {
+    NSString *role=hood_ax_value(element,kAXRoleAttribute);
+    NSString *subrole=hood_ax_value(element,kAXSubroleAttribute);
+    return [role isEqualToString:(__bridge NSString *)kAXWindowRole] &&
+        [subrole isEqualToString:(__bridge NSString *)kAXStandardWindowSubrole];
+}
 @implementation HoodTooltip
 - (BOOL)canBecomeKeyWindow { return YES; }
 - (void)enableAccess:(id)sender {
@@ -305,8 +311,9 @@ void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,
             id values=hood_ax_value(app,kAXWindowsAttribute);
             if([values isKindOfClass:NSArray.class]) {
                 for(id value in values) {
-                    NSString *role=hood_ax_value((__bridge AXUIElementRef)value,kAXRoleAttribute);
-                    if([role isEqualToString:(__bridge NSString *)kAXWindowRole]) [windows addObject:value];
+                    // Some apps publish transient controls, such as Chromium's
+                    // find bar, in AXWindows even though they are not windows.
+                    if(hood_ax_standard_window((__bridge AXUIElementRef)value)) [windows addObject:value];
                 }
             }
             CFRelease(app);
