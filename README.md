@@ -4,6 +4,8 @@ A macOS shelf for switching between running apps, written in Odin and rendered
 with Raylib. Odin calls macOS APIs for app discovery, icons, and activation. This is
 based on Karl Zylinski's Odin + Raylib + Hot Reload [template](https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template).
 
+<br/>
+
 ## Development
 
 With Odin on your PATH and the Xcode Command Line Tools installed, run:
@@ -45,6 +47,8 @@ the compact hover popup provides setup instructions and an **Open Accessibility
 Settings** button when access is missing. Enable Hood (or the development executable) in System Settings →
 Privacy & Security → Accessibility.
 
+<br/>
+
 ## Release
 
 ```sh
@@ -58,6 +62,8 @@ The minimum macOS version defaults to the build machine's installed version and
 is set explicitly in both the executable and app bundle. To target another
 version, run `MACOSX_DEPLOYMENT_TARGET=27.0 ./build_release.sh` (replace `27.0`
 with your target). Odin and its linked libraries must also support that version.
+
+<br/>
 
 ## Settings
 
@@ -81,3 +87,12 @@ edge = "left"
 icon_size = 32
 hover_wave = true
 ```
+
+<br/>
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![](./doc/1_standard.png) | ![](./doc/2_standard_magnification_tooltip.png) |
+| ![](./doc/3_list_windows_and_settings.png) | ![](./doc/4_settings_runtime.png) |
