@@ -380,7 +380,9 @@ void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,
     NSRect target=NSMakeRect(x,y,width,height);
     if(!NSEqualRects(w.frame,target)) [w setFrame:target display:YES];
     label.textColor=hood_text_color([NSColor colorWithCGColor:w.contentView.layer.backgroundColor]);
-    label.frame=NSMakeRect(10,w.list?height-textHeight-4:4,width-20,textHeight); w.level=host.level+1;
+    // Work Sans' visible glyphs sit slightly above the center of AppKit's
+    // typographic line box. Lower the label by one point for optical centering.
+    label.frame=NSMakeRect(10,w.list?height-textHeight-5:3,width-20,textHeight); w.level=host.level+1;
     if(!w.visible) [w orderFrontRegardless];
 }
 
