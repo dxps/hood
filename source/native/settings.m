@@ -387,7 +387,7 @@ static NSBox *hood_separator(void) {
     stats.font = [NSFont boldSystemFontOfSize:15];
     [view addSubview:stats];
 
-    NSTextField *statsDetail = hood_label(@"These statistics are updated every second.");
+    NSTextField *statsDetail = hood_label(@"CPU is a rolling five-second average, updated every second.");
     statsDetail.frame = NSMakeRect(412, 384, 450, 20);
     statsDetail.textColor = NSColor.secondaryLabelColor;
     [view addSubview:statsDetail];

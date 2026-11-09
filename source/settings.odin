@@ -301,7 +301,7 @@ settings_runtime_update :: proc(window: ^ns.Object, runtime: ^Runtime_State) {
 		i32(runtime.available),
 		i32(runtime.cpu_available),
 		i32(runtime.bundled),
-		i32(runtime.login_service != nil),
+		i32(runtime.login_available),
 		i32(runtime.login_enabled),
 		i32(runtime.login_pending),
 		i32(runtime.login_failed),
@@ -310,12 +310,16 @@ settings_runtime_update :: proc(window: ^ns.Object, runtime: ^Runtime_State) {
 
 // The shelf launches Settings as a child process. AppKit owns its window and
 // controls; Odin remains responsible for persistence and runtime operations.
-run_settings :: proc(config_dir, config_path: string, initial: Settings) {
+run_settings :: proc(config_dir, config_path: string, initial: Settings, login_executable := "") {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
 	runtime := Runtime_State{dock_pid = i32(posix.getppid())}
-	init_runtime_login(&runtime)
+	if login_executable == "" {
+		init_runtime_login(&runtime)
+	} else {
+		init_remote_runtime_login(&runtime, login_executable)
+	}
 	defer close_runtime_login(&runtime)
 	update_runtime(&runtime)
 
@@ -324,7 +328,7 @@ run_settings :: proc(config_dir, config_path: string, initial: Settings) {
 	window := hood_settings_create(
 		&state,
 		i32(runtime.bundled),
-		i32(runtime.login_service != nil),
+		i32(runtime.login_available),
 		i32(runtime.login_enabled),
 		i32(runtime.login_pending),
 	)

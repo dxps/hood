@@ -375,11 +375,27 @@ run_shelf :: proc() {
 		settings = load_settings(config_path)
 	}
 
+	if len(os.args) > 1 && (os.args[1] == "--login-status" || os.args[1] == "--toggle-login") {
+		os.exit(runtime_login_exit_code(os.args[1] == "--toggle-login"))
+	}
 	if len(os.args) > 1 && os.args[1] == "--settings" {
-		run_settings(config_dir, config_path, settings)
+		login_executable := os.args[2] if len(os.args) > 2 else ""
+		run_settings(config_dir, config_path, settings, login_executable)
 		return
 	}
 	executable, executable_err := os.get_executable_path(context.allocator)
+	settings_executable := ""
+	if executable_err == nil {
+		executable_suffix :: "/Contents/MacOS/Hood"
+		settings_executable = fmt.aprintf("%s Settings", executable)
+		if strings.has_suffix(executable, executable_suffix) {
+			bundle_path := executable[:len(executable) - len(executable_suffix)]
+			settings_executable = fmt.aprintf(
+				"%s/Contents/Helpers/Hood Settings.app/Contents/MacOS/Hood Settings",
+				bundle_path,
+			)
+		}
+	}
 	pinned_apps := load_pinned_apps(pinned_path)
 	defer free_pinned_apps(pinned_apps)
 	app_order := load_pinned_apps(order_path)
@@ -609,7 +625,9 @@ run_shelf :: proc() {
 					send(ns.BOOL, target, "activateWithOptions:", uint(0))
 				} else if executable_err == nil {
 					err: os.Error
-					settings_process, err = os.process_start({command = {executable, "--settings"}, stderr = os.stderr})
+					settings_process, err = os.process_start(
+						{command = {settings_executable, "--settings", executable}, stderr = os.stderr},
+					)
 					if err != nil {
 						fmt.eprintfln("Could not open Hood Settings: %v", err)
 					} else {

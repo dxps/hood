@@ -32,7 +32,7 @@ trap 'exit 143' TERM
 host_snapshot() {
     find source -type f \( -name '*.odin' -o -name '*.ttf' -o -name '*.m' -o -name '*.h' -o -name '*.icns' \) ! -path 'source/ui.odin' \
         -exec shasum {} + | LC_ALL=C sort
-    shasum build_debug.sh build_native.sh build_dev.sh Info.plist
+    shasum build_debug.sh build_native.sh build_dev.sh Info.plist HoodSettings-Info.plist
 }
 
 previous_host=
