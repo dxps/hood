@@ -42,7 +42,8 @@ Press Escape while the shelf has focus to close it.
 
 Hover an app with multiple windows to see a scrollable list of window titles.
 Click a title to restore a minimized window or bring an open window forward.
-Clicking the currently active window minimizes it. Window controls require macOS Accessibility access;
+Clicking the currently active window minimizes it. Hover a window title and click
+the **×** at its right edge to close that window. Window controls require macOS Accessibility access;
 the compact hover popup provides setup instructions and an **Open Accessibility
 Settings** button when access is missing. Enable Hood (or the development executable) in System Settings →
 Privacy & Security → Accessibility.

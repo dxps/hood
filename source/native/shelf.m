@@ -125,25 +125,70 @@ static CGFloat hood_luminance(NSColor *color) {
 static NSColor *hood_text_color(NSColor *background) {
     return hood_luminance(background)>0.179?NSColor.blackColor:NSColor.whiteColor;
 }
+@interface HoodCloseButton : HoodPopupButton
+@property NSColor *symbolColor;
+@property(nonatomic) BOOL hovered;
+@end
+@implementation HoodCloseButton
+- (void)setHovered:(BOOL)hovered {
+    _hovered=hovered;
+    self.needsDisplay=YES;
+}
+- (void)drawRect:(NSRect)dirtyRect {
+    (void)dirtyRect;
+    NSRect circle=NSInsetRect(self.bounds,2,2);
+    NSColor *symbol=self.hovered?NSColor.whiteColor:(self.symbolColor ?: NSColor.whiteColor);
+    NSColor *fill=self.hovered?
+        [NSColor colorWithSRGBRed:0.68 green:0.16 blue:0.16 alpha:self.cell.highlighted?0.90:0.68]:
+        [symbol colorWithAlphaComponent:self.cell.highlighted?0.24:0.12];
+    [fill setFill];
+    [[NSBezierPath bezierPathWithOvalInRect:circle] fill];
+    [symbol setStroke];
+    NSBezierPath *x=[NSBezierPath bezierPath];
+    x.lineWidth=1.5;
+    x.lineCapStyle=NSLineCapStyleRound;
+    CGFloat inset=6;
+    [x moveToPoint:NSMakePoint(inset,inset)];
+    [x lineToPoint:NSMakePoint(NSWidth(self.bounds)-inset,NSHeight(self.bounds)-inset)];
+    [x moveToPoint:NSMakePoint(NSWidth(self.bounds)-inset,inset)];
+    [x lineToPoint:NSMakePoint(inset,NSHeight(self.bounds)-inset)];
+    [x stroke];
+}
+@end
 @interface HoodWindowButton : HoodPopupButton
 @property NSColor *popupColor;
 @property NSTrackingArea *hoverArea;
-@property BOOL hovered;
+@property(nonatomic) BOOL hovered;
+@property HoodCloseButton *closeButton;
 @end
 @implementation HoodWindowButton
+- (void)setHovered:(BOOL)hovered {
+    _hovered=hovered;
+    self.closeButton.hidden=!hovered;
+    if(hovered && self.closeButton) {
+        NSPoint pointer=[self convertPoint:self.window.mouseLocationOutsideOfEventStream fromView:nil];
+        self.closeButton.hovered=NSPointInRect(pointer,self.closeButton.frame);
+    } else {
+        self.closeButton.hovered=NO;
+    }
+    self.needsDisplay=YES;
+}
 - (void)updateTrackingAreas {
     [super updateTrackingAreas];
     if(self.hoverArea) [self removeTrackingArea:self.hoverArea];
     self.hoverArea=[[NSTrackingArea alloc] initWithRect:NSZeroRect
-        options:NSTrackingMouseEnteredAndExited|NSTrackingActiveAlways|NSTrackingInVisibleRect
+        options:NSTrackingMouseEnteredAndExited|NSTrackingMouseMoved|NSTrackingActiveAlways|NSTrackingInVisibleRect
         owner:self userInfo:nil];
     [self addTrackingArea:self.hoverArea];
     NSPoint pointer=[self convertPoint:self.window.mouseLocationOutsideOfEventStream fromView:nil];
     self.hovered=self.window && NSPointInRect(pointer,self.visibleRect);
-    self.needsDisplay=YES;
 }
-- (void)mouseEntered:(NSEvent *)event { (void)event; self.hovered=YES; self.needsDisplay=YES; }
-- (void)mouseExited:(NSEvent *)event { (void)event; self.hovered=NO; self.needsDisplay=YES; }
+- (void)mouseEntered:(NSEvent *)event { (void)event; self.hovered=YES; }
+- (void)mouseExited:(NSEvent *)event { (void)event; self.hovered=NO; }
+- (void)mouseMoved:(NSEvent *)event {
+    NSPoint pointer=[self convertPoint:event.locationInWindow fromView:nil];
+    self.closeButton.hovered=!self.closeButton.hidden && NSPointInRect(pointer,self.closeButton.frame);
+}
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
     NSColor *background=self.popupColor ?: NSColor.darkGrayColor;
@@ -173,18 +218,22 @@ static NSColor *hood_text_color(NSColor *background) {
     NSDictionary *attributes=@{NSFontAttributeName:font,NSForegroundColorAttributeName:text,NSParagraphStyleAttributeName:style};
     CGFloat height=ceil(font.ascender-font.descender);
     [self.title drawInRect:NSMakeRect(10,(self.bounds.size.height-height)/2,self.bounds.size.width-20,height) withAttributes:attributes];
+    self.closeButton.symbolColor=text;
+    self.closeButton.needsDisplay=YES;
 }
 @end
 
 // Retain AX elements in the popup so each action addresses the selected window.
 @interface HoodTooltip : NSPanel
 @property pid_t pid;
+@property NSInteger edge;
 @property double nextRefresh;
 @property double lastInside;
 @property NSArray *windows;
 @property BOOL needsAccess;
 @property NSScrollView *list;
 - (void)windowAction:(NSButton *)sender;
+- (void)closeWindowAction:(NSButton *)sender;
 - (void)enableAccess:(id)sender;
 @end
 static id hood_ax_value(AXUIElementRef element, CFStringRef attribute) {
@@ -251,6 +300,63 @@ static BOOL hood_ax_standard_window(AXUIElementRef element) {
     }
     self.nextRefresh=0;
 }
+- (void)closeWindowAction:(NSButton *)sender {
+    NSUInteger index=sender.tag;
+    if(index>=self.windows.count) return;
+    AXUIElementRef window=(__bridge AXUIElementRef)self.windows[index];
+    id closeButton=hood_ax_value(window,kAXCloseButtonAttribute);
+    if(!closeButton || AXUIElementPerformAction((__bridge AXUIElementRef)closeButton,kAXPressAction)!=kAXErrorSuccess) {
+        NSBeep();
+        self.nextRefresh=0;
+        return;
+    }
+    HoodWindowButton *closedRow=(HoodWindowButton *)sender.superview;
+    NSView *rows=closedRow.superview;
+    [closedRow removeFromSuperview];
+    NSMutableArray *remaining=[self.windows mutableCopy];
+    [remaining removeObjectAtIndex:index];
+    self.windows=remaining;
+    NSUInteger remainingIndex=0;
+    for(HoodWindowButton *row in rows.subviews) {
+        row.tag=remainingIndex;
+        row.closeButton.tag=remainingIndex;
+        NSRect frame=row.frame;
+        frame.origin.y=(remaining.count-remainingIndex-1)*36+2;
+        row.frame=frame;
+        remainingIndex++;
+    }
+    [rows setFrameSize:NSMakeSize(rows.frame.size.width,remaining.count*36)];
+    NSTextField *label=(NSTextField *)[self.contentView viewWithTag:1];
+    CGFloat textHeight=label.frame.size.height;
+    NSRect popupFrame=self.frame;
+    CGFloat width=popupFrame.size.width;
+    CGFloat height;
+    if(remaining.count>1) {
+        height=textHeight+16+MIN(360,remaining.count*36);
+    } else {
+        [self.list removeFromSuperview];
+        self.list=nil;
+        self.ignoresMouseEvents=YES;
+        height=textHeight+8;
+    }
+    CGFloat removedHeight=popupFrame.size.height-height;
+    if(self.edge==3) {
+        // Below a top Dock, keep the popup's top edge next to the Dock.
+        popupFrame.origin.y+=removedHeight;
+    } else if(self.edge<2) {
+        // Beside a vertical Dock, keep the popup centered on the hovered icon.
+        popupFrame.origin.y+=removedHeight/2;
+    }
+    // Above a bottom Dock (edge 2), the existing bottom edge is already the
+    // Dock-facing edge and remains fixed.
+    popupFrame.size.height=height;
+    [self setFrame:popupFrame display:YES];
+    if(self.list) self.list.frame=NSMakeRect(8,6,width-16,MAX(0,height-textHeight-16));
+    label.frame=NSMakeRect(10,self.list?height-textHeight-5:3,width-20,textHeight);
+    // Give the target app a moment to remove the AX window. If it refuses the
+    // close (for example, by presenting a save prompt), the refresh restores it.
+    self.nextRefresh=hood_time()+0.2;
+}
 @end
 // A brief grace period bridges the gap between icon and popup without keeping
 // the shelf open after the pointer leaves both surfaces.
@@ -280,6 +386,7 @@ void *hood_tooltip_create(void) {
 }
 void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,int edge,int opacityPercent,int pid) {
     HoodTooltip *w=(__bridge HoodTooltip *)tip;
+    w.edge=edge;
     NSWindow *host=(__bridge NSWindow *)shelf;
     if(!host.screen) { [w orderOut:nil]; return; }
     CGFloat opacity=MAX(0.2,MIN(1.0,opacityPercent/100.0));
@@ -343,11 +450,21 @@ void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,
                 id value=hood_ax_value(window,kAXTitleAttribute);
                 NSString *name=[value isKindOfClass:NSString.class] && [value length]?value:@"Untitled window";
                 CGFloat y=(windows.count-i-1)*36;
-                NSButton *row=[HoodWindowButton buttonWithTitle:name target:w action:@selector(windowAction:)];
+                HoodWindowButton *row=[HoodWindowButton buttonWithTitle:name target:w action:@selector(windowAction:)];
                 row.tag=i; row.frame=NSMakeRect(4,y+2,352,32);
                 row.alignment=NSTextAlignmentCenter;
                 row.lineBreakMode=NSLineBreakByTruncatingTail;
                 row.toolTip=name;
+                HoodCloseButton *close=[HoodCloseButton buttonWithTitle:@"" target:w action:@selector(closeWindowAction:)];
+                close.tag=i;
+                close.bordered=NO;
+                close.hidden=YES;
+                close.toolTip=[NSString stringWithFormat:@"Close %@",name];
+                close.accessibilityLabel=close.toolTip;
+                close.frame=NSMakeRect(NSWidth(row.bounds)-24,6,20,20);
+                close.autoresizingMask=NSViewMinXMargin;
+                row.closeButton=close;
+                [row addSubview:close];
                 [rows addSubview:row];
             }
             w.list.documentView=rows; [w.contentView addSubview:w.list];
@@ -378,7 +495,7 @@ void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,
         }
         w.lastInside=hood_time();
     }
-    CGFloat gap=w.list && !w.needsAccess?2:6;
+    CGFloat gap=w.list && !w.needsAccess?1:6;
     CGFloat x=NSMaxX(frame)+gap, y=NSMaxY(frame)-cy-height/2;
     if(edge==1) x=NSMinX(frame)-width-gap;
     if(edge>=2) { x=NSMinX(frame)+cx-width/2; y=edge==2?NSMaxY(frame)+gap:NSMinY(frame)-height-gap; }
