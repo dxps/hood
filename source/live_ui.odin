@@ -14,14 +14,16 @@ Shelf_Interaction :: struct {
 	drag_id: u64,
 	drag_start: rl.Vector2,
 	dragging: bool,
+	hover_updated: f64,
 }
 
 Shelf_Frame :: struct {
-	hovered:        App,
-	tooltip_center: rl.Vector2,
-	clicked_id:     u64,
-	pointed_id:     u64,
-	order_changed:  bool,
+	hovered:         App,
+	tooltip_center:  rl.Vector2,
+	clicked_id:      u64,
+	pointed_id:      u64,
+	order_changed:   bool,
+	hover_animating: bool,
 }
 
 // Keep the module boundary here so changes to these signatures rebuild the host.
@@ -30,14 +32,14 @@ hood_draw_shelf :: proc(
 	window: ^ns.Object,
 	interaction: ^Shelf_Interaction,
 	input: ^Native_Input,
-	delta: f32,
+	now: f64,
 	apps: []App,
 	settings: Settings,
 	width, height: i32,
 	scroll: f32,
 	context_click: bool,
 ) -> Shelf_Frame {
-	return draw_shelf(window, interaction, input, delta, apps, settings, width, height, scroll, context_click)
+	return draw_shelf(window, interaction, input, now, apps, settings, width, height, scroll, context_click)
 }
 
 Live_UI :: struct {
@@ -104,7 +106,7 @@ ui_shelf :: proc(
 	window: ^ns.Object,
 	interaction: ^Shelf_Interaction,
 	input: ^Native_Input,
-	delta: f32,
+	now: f64,
 	apps: []App,
 	settings: Settings,
 	width, height: i32,
@@ -113,5 +115,5 @@ ui_shelf :: proc(
 ) -> Shelf_Frame {
 	refresh_live_ui(ui)
 	draw := ui.shelf if ui.shelf != nil else hood_draw_shelf
-	return draw(window, interaction, input, delta, apps, settings, width, height, scroll, context_click)
+	return draw(window, interaction, input, now, apps, settings, width, height, scroll, context_click)
 }

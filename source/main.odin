@@ -314,6 +314,7 @@ Dock_State :: struct {
 	last_pointer: ns.Point,
 	redraw_until: f64,
 	needs_redraw: bool,
+	hover_animating: bool,
 	interaction: Shelf_Interaction,
 	hover_scales: map[u64]f32,
 }
@@ -436,7 +437,16 @@ run_shelf :: proc() {
 		defer free_all(context.temp_allocator)
 
 		pump_input: Native_Input
-		hood_poll(nil, &pump_input, wait)
+		// Include time spent updating and drawing in the frame interval.
+		deadline := last_frame + wait
+		hood_poll(nil, &pump_input, max(0, deadline - hood_time()))
+		if wait == 1.0 / 60 {
+			// Pointer events can wake Cocoa early. Collect them while waiting
+			// for the next frame so movement doesn't trigger bursts of drawing.
+			for remaining := deadline - hood_time(); remaining > 0; remaining = deadline - hood_time() {
+				hood_poll(nil, &pump_input, remaining)
+			}
+		}
 		now := hood_time()
 		delta := min(now - last_frame, 0.05)
 		last_frame = now
@@ -489,6 +499,8 @@ run_shelf :: proc() {
 			if dock.visibility.hidden {
 				hide_tooltip(&dock.tooltip)
 				dock.hovered_id = 0
+				dock.hover_animating = false
+				clear(&dock.hover_scales)
 				// Keep Cocoa responsive and check the reveal edge without drawing or swapping buffers.
 				continue
 			}
@@ -505,7 +517,7 @@ run_shelf :: proc() {
 				dock.redraw_until = now + max(f64(settings.hover_animation_tenths) / 10, f64(settings.tooltip_delay_ms) / 1000) + 0.1
 			}
 			dock.last_pointer = pointer
-			if !dock_redraw && !was_hidden && dock.tooltip.app_id == 0 && now > dock.redraw_until &&
+			if !dock_redraw && !was_hidden && !dock.hover_animating && dock.tooltip.app_id == 0 && now > dock.redraw_until &&
 			   (dock.visibility.progress == 0 || dock.visibility.progress == 1) && input.escape == 0 {
 				// Preserve the last frame; still pump input so clicks and reveal remain responsive.
 				continue
@@ -523,8 +535,9 @@ run_shelf :: proc() {
 
 			for &app in apps { app.hover_scale = dock.hover_scales[app.order_id] }
 			clear(&dock.hover_scales)
-			result := ui_shelf(&ui, dock.window, &dock.interaction, &input, f32(delta), apps[:], settings, width, height, dock.scroll, context_click || !interactive)
+			result := ui_shelf(&ui, dock.window, &dock.interaction, &input, now, apps[:], settings, width, height, dock.scroll, context_click || !interactive)
 			for app in apps { dock.hover_scales[app.order_id] = app.hover_scale }
+			dock.hover_animating = result.hover_animating
 			if result.order_changed {
 				for &other in docks { other.needs_redraw = true }
 				_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])

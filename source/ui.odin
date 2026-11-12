@@ -1,23 +1,23 @@
 package main
 
+import "core:math"
 import ns "vendor:darwin/AppKit"
 import rl "vendor:raylib"
 
 wave_icon_rect :: proc(
 	icon: rl.Rectangle,
-	progress: f32,
+	scale: f32,
 	settings: Settings,
 	layout: Shelf_Layout,
 	width, height: i32,
 ) -> rl.Rectangle {
-	if progress <= 0 {
+	if scale <= 0 {
 		return icon
 	}
-	eased := progress * progress * (3 - 2 * progress)
 	size := icon.width
 	center := rl.Vector2{icon.x + size / 2, icon.y + size / 2}
 	growth := f32(settings.magnification_percent) / 100
-	grown := size * (1 + growth * eased)
+	grown := size * (1 + growth * scale)
 	x, y := center.x - grown / 2, center.y - grown / 2
 	// Keep magnification inside the scroll viewport along the shelf. Across the
 	// shelf it is intentionally allowed to rise into the transparent canvas.
@@ -27,7 +27,7 @@ wave_icon_rect :: proc(
 		y = clamp(y, 0, f32(height) - grown)
 	}
 	lift_factor: f32 = 0.45 if settings.hover_wave else 0.20
-	lift := size * lift_factor * eased
+	lift := size * lift_factor * scale
 	switch settings.edge {
 	case .Left:
 		x += lift
@@ -41,11 +41,19 @@ wave_icon_rect :: proc(
 	return {x, y, grown, grown}
 }
 
+wave_strength :: proc(distance: f32) -> f32 {
+	// Preserve the peak and the two neighboring strengths at icon centers.
+	squared := distance * distance
+	falloff := 1 / (1 + squared * (1.23 + 0.15 * squared))
+	tail := clamp(3 - distance, 0, 1)
+	return falloff * tail * tail * (3 - 2 * tail)
+}
+
 draw_shelf :: proc(
 	window: ^ns.Object,
 	interaction: ^Shelf_Interaction,
 	input: ^Native_Input,
-	delta: f32,
+	now: f64,
 	apps: []App,
 	settings: Settings,
 	width, height: i32,
@@ -178,8 +186,29 @@ draw_shelf :: proc(
 
 	raised_icon: rawptr
 	raised_rect: rl.Rectangle
+	size := f32(settings.icon_size)
+	first_center := f32(layout.start) - scroll + size / 2
+	pointer_axis := mouse.x if layout.horizontal else mouse.y
+	wave_position := (pointer_axis - first_center) / f32(layout.step)
+	cross_axis := mouse.y if layout.horizontal else mouse.x
+	shelf_cross := shelf_y if layout.horizontal else shelf_x
+	shelf_thickness := f32(layout.shelf_thickness)
+	cross_center := shelf_cross + shelf_thickness / 2
+	// Keep the wave active through gaps without changing icon hit testing.
+	in_icon_band := pointer_inside && abs(cross_axis - cross_center) <= size / 2 &&
+	                wave_position >= 0 && wave_position <= f32(len(apps) - 1)
+	magnify := !context_click && !was_dragging && settings.magnification_percent > 0
+
+	elapsed := clamp(now - interaction.hover_updated, 0, 1.0 / 30)
+	interaction.hover_updated = now
+	duration := f64(settings.hover_animation_tenths) / 10
+	blend: f32 = 1
+	if duration > 0 && settings.magnification_percent > 0 {
+		// Cover about 99.9% of a step over the selected duration. A moving
+		// target can be followed every frame without restarting an easing curve.
+		blend = f32(1 - math.exp(-6.9 * elapsed / duration))
+	}
 	for &app, index in apps {
-		size := f32(settings.icon_size)
 		offset := f32(layout.start + i32(index) * layout.step) - scroll
 		icon := rl.Rectangle{shelf_x + (shelf_width - size) / 2, offset, size, size}
 		if layout.horizontal {
@@ -195,27 +224,18 @@ draw_shelf :: proc(
 			result.tooltip_center = center
 		}
 		target: f32
-		if !context_click && !was_dragging && hovered_index >= 0 && settings.magnification_percent > 0 {
-			distance := abs(index - hovered_index)
-			switch distance {
-			case 0:
+		if magnify {
+			if settings.hover_wave && (hovered_index >= 0 || in_icon_band) {
+				target = wave_strength(abs(f32(index) - wave_position))
+			} else if index == hovered_index {
 				target = 1
-			case 1:
-				if settings.hover_wave {
-					target = 0.42
-				}
-			case 2:
-				if settings.hover_wave {
-					target = 0.12
-				}
 			}
 		}
-		if settings.magnification_percent > 0 && settings.hover_animation_tenths > 0 {
-			step := delta * 10 / f32(settings.hover_animation_tenths)
-			app.hover_scale += clamp(target - app.hover_scale, -step, step)
-		} else {
+		app.hover_scale += (target - app.hover_scale) * blend
+		if abs(target - app.hover_scale) <= 0.001 {
 			app.hover_scale = target
 		}
+		result.hover_animating = result.hover_animating || app.hover_scale != target
 		icon = wave_icon_rect(icon, app.hover_scale, settings, layout, width, height)
 		if hover {
 			result.tooltip_center = {icon.x + icon.width / 2, icon.y + icon.height / 2}
