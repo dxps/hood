@@ -41,6 +41,7 @@ Menu_Choice :: enum {
 	Settings,
 	Keep_In_Dock,
 	Quit_App,
+	Close_Window,
 }
 
 selected_menu_choice: Menu_Choice
@@ -64,7 +65,7 @@ set_menu_item_title :: proc(item: ^ns.Object, title, padded_title: cstring) {
 	}
 }
 
-show_context_menu :: proc(window: ^ns.Object, app: ^App, kept: bool) -> Menu_Choice {
+show_context_menu :: proc(window: ^ns.Object, app: ^App, kept, separate_windows: bool) -> Menu_Choice {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
@@ -79,7 +80,10 @@ show_context_menu :: proc(window: ^ns.Object, app: ^App, kept: bool) -> Menu_Cho
 	defer notify(target, "release")
 	menu := send(^ns.Object, native_class("NSMenu"), "new")
 	defer notify(menu, "release")
-	if app != nil && app.bundle_id != "" {
+	can_keep := app != nil && app.bundle_id != ""
+	can_close := app != nil && app.ax_window != nil
+	can_quit := can_keep && app.pid != 0 && !separate_windows
+	if can_keep {
 		keep := send(^ns.Object, native_class("NSMenuItem"), "new")
 		defer notify(keep, "release")
 		set_menu_item_title(keep, "Keep in Dock", "\u00a0\u00a0Keep in Dock\u00a0\u00a0")
@@ -88,15 +92,22 @@ show_context_menu :: proc(window: ^ns.Object, app: ^App, kept: bool) -> Menu_Cho
 		notify(keep, "setAction:", action)
 		notify(keep, "setTarget:", target)
 		notify(menu, "addItem:", keep)
-		if app.pid != 0 {
-			quit := send(^ns.Object, native_class("NSMenuItem"), "new")
-			defer notify(quit, "release")
-			set_menu_item_title(quit, "Quit the app", "\u00a0\u00a0Quit the app\u00a0\u00a0")
-			notify(quit, "setTag:", int(Menu_Choice.Quit_App))
-			notify(quit, "setAction:", action)
-			notify(quit, "setTarget:", target)
-			notify(menu, "addItem:", quit)
+	}
+	if can_close || can_quit {
+		item := send(^ns.Object, native_class("NSMenuItem"), "new")
+		defer notify(item, "release")
+		if can_close {
+			set_menu_item_title(item, "Close the window", "\u00a0\u00a0Close the window\u00a0\u00a0")
+			notify(item, "setTag:", int(Menu_Choice.Close_Window))
+		} else {
+			set_menu_item_title(item, "Quit the app", "\u00a0\u00a0Quit the app\u00a0\u00a0")
+			notify(item, "setTag:", int(Menu_Choice.Quit_App))
 		}
+		notify(item, "setAction:", action)
+		notify(item, "setTarget:", target)
+		notify(menu, "addItem:", item)
+	}
+	if can_keep || can_close {
 		separator := send(^ns.Object, native_class("NSMenuItem"), "separatorItem")
 		notify(menu, "addItem:", separator)
 	}

@@ -298,6 +298,15 @@ void hood_toggle_window(int32_t pid, AXUIElementRef window) {
     }
 }
 
+int32_t hood_close_window(AXUIElementRef window) {
+    id closeButton=hood_ax_value(window,kAXCloseButtonAttribute);
+    if(!closeButton || AXUIElementPerformAction((__bridge AXUIElementRef)closeButton,kAXPressAction)!=kAXErrorSuccess) {
+        NSBeep();
+        return 0;
+    }
+    return 1;
+}
+
 @implementation HoodTooltip
 - (BOOL)canBecomeKeyWindow { return YES; }
 - (void)enableAccess:(id)sender {
@@ -334,9 +343,7 @@ void hood_toggle_window(int32_t pid, AXUIElementRef window) {
     NSUInteger index=sender.tag;
     if(index>=self.windows.count) return;
     AXUIElementRef window=(__bridge AXUIElementRef)self.windows[index];
-    id closeButton=hood_ax_value(window,kAXCloseButtonAttribute);
-    if(!closeButton || AXUIElementPerformAction((__bridge AXUIElementRef)closeButton,kAXPressAction)!=kAXErrorSuccess) {
-        NSBeep();
+    if(!hood_close_window(window)) {
         self.nextRefresh=0;
         return;
     }

@@ -45,6 +45,7 @@ foreign hood_native {
 	hood_copy_windows :: proc "c" (pid: i32) -> cf.ArrayRef ---
 	hood_window_title :: proc "c" (window: cf.TypeRef) -> ^ns.Object ---
 	hood_toggle_window :: proc "c" (pid: i32, window: cf.TypeRef) ---
+	hood_close_window :: proc "c" (window: cf.TypeRef) -> i32 ---
 	hood_tooltip_create :: proc "c" () -> ^ns.Object ---
 	hood_tooltip_show :: proc "c" (tip, window: ^ns.Object, text: cstring, x, y: f32, edge, opacity_percent, pid: i32) ---
 	hood_tooltip_active :: proc "c" (tip: ^ns.Object) -> i32 ---
