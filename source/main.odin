@@ -47,6 +47,7 @@ App :: struct {
 	icon:        rawptr,
 	hover_scale: f32,
 	ax_window:   cf.TypeRef,
+	windows_empty: bool,
 }
 
 next_app_order_id: u64 = 1
@@ -189,6 +190,9 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned, app_ord
 				icon      = load_icon(app),
 			}
 		} else {
+			if candidate.pid != pid {
+				candidate.windows_empty = false
+			}
 			candidate.pid = pid
 			if candidate.bundle_id == "" && bundle_id != "" {
 				candidate.bundle_id = strings.clone(bundle_id)
@@ -283,7 +287,9 @@ clone_app_entry :: proc(app: App, name: string) -> App {
 
 refresh_window_entries :: proc(entries: ^[dynamic]App, apps: []App, pinned: []string) {
 	next: [dynamic]App
-	for app in apps {
+	ranks: map[u64]int
+	defer delete(ranks)
+	for &app, rank in apps {
 		windows: cf.ArrayRef
 		if app.pid != 0 {
 			windows = hood_copy_windows(app.pid)
@@ -292,8 +298,30 @@ refresh_window_entries :: proc(entries: ^[dynamic]App, apps: []App, pinned: []st
 			cf.Release(cast(cf.TypeRef)windows)
 		}
 		count := 0 if windows == nil else cf.ArrayGetCount(windows)
+		// Keep the previous windows if AX failed or briefly returned an empty
+		// list during a transition. A second successful empty list clears them.
+		if app.pid != 0 && (windows == nil || (count == 0 && !app.windows_empty)) {
+			first := len(next)
+			for previous in entries^ {
+				if previous.pid == app.pid && previous.ax_window != nil {
+					entry := clone_app_entry(previous, strings.clone(previous.name))
+					entry.ax_window = cf.Retain(previous.ax_window)
+					ranks[entry.order_id] = rank
+					append(&next, entry)
+				}
+			}
+			app.windows_empty = windows != nil
+			if len(next) > first {
+				continue
+			}
+		}
+		if windows != nil {
+			app.windows_empty = count == 0
+		}
 		if count == 0 && pinned_app_index(pinned, app.bundle_id) >= 0 {
-			append(&next, clone_app_entry(app, strings.clone(app.name)))
+			entry := clone_app_entry(app, strings.clone(app.name))
+			ranks[entry.order_id] = rank
+			append(&next, entry)
 		}
 		for index in 0 ..< count {
 			window := cf.ArrayGetValueAtIndex(windows, index)
@@ -311,6 +339,7 @@ refresh_window_entries :: proc(entries: ^[dynamic]App, apps: []App, pinned: []st
 			entry := clone_app_entry(app, strings.clone(title))
 			entry.order_id = id
 			entry.ax_window = cf.Retain(window)
+			ranks[id] = rank
 			append(&next, entry)
 		}
 	}
@@ -330,12 +359,14 @@ refresh_window_entries :: proc(entries: ^[dynamic]App, apps: []App, pinned: []st
 			continue
 		}
 		insert_at := len(ordered)
-		if entry.ax_window != nil {
-			for index := len(ordered) - 1; index >= 0; index -= 1 {
-				if ordered[index].ax_window != nil && ordered[index].pid == entry.pid {
-					insert_at = index + 1
-					break
-				}
+		rank := ranks[entry.order_id]
+		for index := len(ordered) - 1; index >= 0; index -= 1 {
+			if ranks[ordered[index].order_id] == rank {
+				insert_at = index + 1
+				break
+			}
+			if ranks[ordered[index].order_id] > rank {
+				insert_at = index
 			}
 		}
 		inject_at(&ordered, insert_at, entry)
@@ -633,11 +664,9 @@ run_shelf :: proc() {
 			dock.hover_animating = result.hover_animating
 			if result.order_changed {
 				for &other in docks { other.needs_redraw = true }
-				if !separate_windows {
-					_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
-					if order_err != nil {
-						fmt.eprintfln("Could not save app order: %v", order_err)
-					}
+				_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
+				if order_err != nil {
+					fmt.eprintfln("Could not save app order: %v", order_err)
 				}
 			}
 			menu_choice := Menu_Choice.None
@@ -677,7 +706,7 @@ run_shelf :: proc() {
 				}
 				if clicked != nil && clicked.ax_window != nil {
 					hood_toggle_window(clicked.pid, clicked.ax_window)
-					next_app_refresh = 0
+					next_app_refresh = max(next_app_refresh, hood_time() + 0.25)
 				} else if clicked != nil && clicked.pid != 0 {
 					target := send(
 						^ns.Object,
