@@ -74,6 +74,10 @@ The **Display** option offers **Primary display**, **All displays**, and each
 connected monitor. A specific monitor is remembered across restarts. If it is
 disconnected, Hood uses the primary display until that monitor reconnects.
 Each dock has independent scrolling, hover, and auto-hide behavior.
+Under **Icons**, set **Window grouping** to **One icon per window** to show
+open and minimized windows separately. Hover an icon to see its window title
+and click it to switch to that window. This mode uses Accessibility access.
+Hood uses **By app** by default and while access is unavailable.
 Choose the left, right, bottom, or top screen edge and set the icon size from 24 to 48 pixels.
 Changes apply while Settings is open and are saved automatically to
 `~/.config/hood/hood.toml`. Hood loads the file at startup.

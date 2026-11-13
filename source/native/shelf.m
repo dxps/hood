@@ -247,6 +247,57 @@ static BOOL hood_ax_standard_window(AXUIElementRef element) {
     return [role isEqualToString:(__bridge NSString *)kAXWindowRole] &&
         [subrole isEqualToString:(__bridge NSString *)kAXStandardWindowSubrole];
 }
+int32_t hood_accessibility_trusted(void) {
+    return AXIsProcessTrusted();
+}
+
+CFArrayRef hood_copy_windows(int32_t pid) {
+    AXUIElementRef app=AXUIElementCreateApplication(pid);
+    AXUIElementSetMessagingTimeout(app,0.15);
+    id values=hood_ax_value(app,kAXWindowsAttribute);
+    CFRelease(app);
+    if(![values isKindOfClass:NSArray.class]) return NULL;
+
+    NSMutableArray *windows=[NSMutableArray array];
+    for(id value in values) {
+        // Some apps publish transient controls, such as Chromium's find bar.
+        if(hood_ax_standard_window((__bridge AXUIElementRef)value) && ![windows containsObject:value]) {
+            [windows addObject:value];
+        }
+    }
+    return CFBridgingRetain(windows);
+}
+
+NSString *hood_window_title(AXUIElementRef window) {
+    id value=hood_ax_value(window,kAXTitleAttribute);
+    NSString *title=[value isKindOfClass:NSString.class] && [value length] ? value : @"Untitled window";
+    return title;
+}
+
+void hood_toggle_window(int32_t pid, AXUIElementRef window) {
+    NSRunningApplication *app=[NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+    id minimizedValue=hood_ax_value(window,kAXMinimizedAttribute);
+    if(!minimizedValue || !app || app.terminated) { NSBeep(); return; }
+
+    BOOL minimized=[minimizedValue boolValue];
+    AXUIElementRef application=AXUIElementCreateApplication(pid);
+    AXUIElementSetMessagingTimeout(application,0.15);
+    id focused=hood_ax_value(application,kAXFocusedWindowAttribute);
+    CFRelease(application);
+    BOOL active=app.active && !app.hidden && focused && CFEqual((__bridge CFTypeRef)focused,window);
+    BOOL minimize=!minimized && active;
+    if(minimized || minimize) {
+        AXError error=AXUIElementSetAttributeValue(window,kAXMinimizedAttribute,minimize?kCFBooleanTrue:kCFBooleanFalse);
+        if(error!=kAXErrorSuccess) { NSBeep(); return; }
+    }
+    if(!minimize) {
+        [app unhide];
+        [app activateWithOptions:0];
+        AXUIElementSetAttributeValue(window,kAXMainAttribute,kCFBooleanTrue);
+        if(AXUIElementPerformAction(window,kAXRaiseAction)!=kAXErrorSuccess) NSBeep();
+    }
+}
+
 @implementation HoodTooltip
 - (BOOL)canBecomeKeyWindow { return YES; }
 - (void)enableAccess:(id)sender {
@@ -276,28 +327,7 @@ static BOOL hood_ax_standard_window(AXUIElementRef element) {
 - (void)windowAction:(NSButton *)sender {
     NSUInteger index=sender.tag;
     if(index>=self.windows.count) return;
-    AXUIElementRef window=(__bridge AXUIElementRef)self.windows[index];
-    NSRunningApplication *app=[NSRunningApplication runningApplicationWithProcessIdentifier:self.pid];
-    // Read live state at click time: another app or window may have gained focus
-    // since this list was populated. The nonactivating popup preserves focus.
-    id minimizedValue=hood_ax_value(window,kAXMinimizedAttribute);
-    if(!minimizedValue || !app || app.terminated) { NSBeep(); self.nextRefresh=0; return; }
-    BOOL minimized=[minimizedValue boolValue];
-    AXUIElementRef application=AXUIElementCreateApplication(self.pid);
-    id focused=hood_ax_value(application,kAXFocusedWindowAttribute);
-    CFRelease(application);
-    BOOL active=app.active && !app.hidden && focused && CFEqual((__bridge CFTypeRef)focused,window);
-    BOOL minimize=!minimized && active;
-    if(minimized || minimize) {
-        AXError error=AXUIElementSetAttributeValue(window,kAXMinimizedAttribute,minimize?kCFBooleanTrue:kCFBooleanFalse);
-        if(error!=kAXErrorSuccess) { NSBeep(); self.nextRefresh=0; return; }
-    }
-    if(!minimize) {
-        [app unhide];
-        [app activateWithOptions:0];
-        AXUIElementSetAttributeValue(window,kAXMainAttribute,kCFBooleanTrue);
-        if(AXUIElementPerformAction(window,kAXRaiseAction)!=kAXErrorSuccess) NSBeep();
-    }
+    hood_toggle_window(self.pid,(__bridge AXUIElementRef)self.windows[index]);
     self.nextRefresh=0;
 }
 - (void)closeWindowAction:(NSButton *)sender {
@@ -411,20 +441,8 @@ void hood_tooltip_show(void *tip,void *shelf,const char *text,float cx,float cy,
     CGFloat width=MIN(maxWidth,contentWidth+20), height=textHeight+8;
     if(w.pid!=pid || !w.visible || hood_time()>=w.nextRefresh) {
         w.pid=pid; w.nextRefresh=hood_time()+1;
-        NSMutableArray *windows=[NSMutableArray array];
-        if(pid>0 && AXIsProcessTrusted()) {
-            AXUIElementRef app=AXUIElementCreateApplication(pid);
-            AXUIElementSetMessagingTimeout(app,0.15);
-            id values=hood_ax_value(app,kAXWindowsAttribute);
-            if([values isKindOfClass:NSArray.class]) {
-                for(id value in values) {
-                    // Some apps publish transient controls, such as Chromium's
-                    // find bar, in AXWindows even though they are not windows.
-                    if(hood_ax_standard_window((__bridge AXUIElementRef)value)) [windows addObject:value];
-                }
-            }
-            CFRelease(app);
-        }
+        NSArray *windows=nil;
+        if(pid>0 && AXIsProcessTrusted()) windows=CFBridgingRelease(hood_copy_windows(pid));
         w.windows=windows;
         [w.list removeFromSuperview]; w.list=nil;
         BOOL needsAccess=pid>0 && !AXIsProcessTrusted();

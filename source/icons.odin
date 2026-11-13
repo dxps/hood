@@ -7,6 +7,7 @@ foreign import core_graphics "system:CoreGraphics.framework"
 
 foreign core_graphics {
 	CGBitmapContextCreateImage :: proc "c" (bitmap: rawptr) -> rawptr ---
+	CGImageRetain :: proc "c" (image: rawptr) -> rawptr ---
 	CGImageRelease :: proc "c" (image: rawptr) ---
 	CGColorSpaceCreateDeviceRGB :: proc "c" () -> rawptr ---
 	CGColorSpaceRelease :: proc "c" (space: rawptr) ---

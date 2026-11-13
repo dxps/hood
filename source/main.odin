@@ -46,6 +46,7 @@ App :: struct {
 	name:        string,
 	icon:        rawptr,
 	hover_scale: f32,
+	ax_window:   cf.TypeRef,
 }
 
 next_app_order_id: u64 = 1
@@ -147,13 +148,13 @@ load_pinned_app :: proc(workspace: ^ns.Object, identifier: string) -> (App, bool
 	}, true
 }
 
-refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned, app_order: []string) -> i32 {
+refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned, app_order: []string, separate_windows: bool) -> i32 {
 	pool := send(^ns.Object, native_class("NSAutoreleasePool"), "new")
 	defer notify(pool, "drain")
 
 	running := send(^ns.Object, workspace, "runningApplications")
 	// Include minimized windows and windows on other Spaces, not just on-screen ones.
-	windows := cg.WindowListCopyWindowInfo(.All, 0)
+	windows := nil if separate_windows else cg.WindowListCopyWindowInfo(.All, 0)
 	defer if windows != nil {
 		cf.Release(cast(cf.TypeRef)windows)
 	}
@@ -165,7 +166,7 @@ refresh_apps :: proc(workspace: ^ns.Object, apps: ^[dynamic]App, pinned, app_ord
 		}
 		pid := send(i32, app, "processIdentifier")
 		bundle_id := app_bundle_identifier(app)
-		if pinned_app_index(pinned, bundle_id) < 0 && !application_has_window(windows, pid) {
+		if !separate_windows && pinned_app_index(pinned, bundle_id) < 0 && !application_has_window(windows, pid) {
 			continue
 		}
 		candidate: App
@@ -260,11 +261,88 @@ free_apps :: proc(apps: [dynamic]App) {
 	for app in apps {
 		delete(app.bundle_id)
 		delete(app.name)
+		if app.ax_window != nil {
+			cf.Release(app.ax_window)
+		}
 		if app.icon != nil {
 			CGImageRelease(app.icon)
 		}
 	}
 	delete(apps)
+}
+
+clone_app_entry :: proc(app: App, name: string) -> App {
+	entry := app
+	entry.name = name
+	entry.bundle_id = strings.clone(app.bundle_id)
+	if app.icon != nil {
+		entry.icon = CGImageRetain(app.icon)
+	}
+	return entry
+}
+
+refresh_window_entries :: proc(entries: ^[dynamic]App, apps: []App, pinned: []string) {
+	next: [dynamic]App
+	for app in apps {
+		windows: cf.ArrayRef
+		if app.pid != 0 {
+			windows = hood_copy_windows(app.pid)
+		}
+		defer if windows != nil {
+			cf.Release(cast(cf.TypeRef)windows)
+		}
+		count := 0 if windows == nil else cf.ArrayGetCount(windows)
+		if count == 0 && pinned_app_index(pinned, app.bundle_id) >= 0 {
+			append(&next, clone_app_entry(app, strings.clone(app.name)))
+		}
+		for index in 0 ..< count {
+			window := cf.ArrayGetValueAtIndex(windows, index)
+			id: u64
+			for previous in entries^ {
+				if previous.pid == app.pid && previous.ax_window != nil && cf.Equal(previous.ax_window, window) {
+					id = previous.order_id
+					break
+				}
+			}
+			if id == 0 {
+				id = new_app_order_id()
+			}
+			title := string(send(cstring, hood_window_title(window), "UTF8String"))
+			entry := clone_app_entry(app, fmt.aprintf("%s — %s", app.name, title))
+			entry.order_id = id
+			entry.ax_window = cf.Retain(window)
+			append(&next, entry)
+		}
+	}
+	// AXWindows can change order when focus moves. Keep existing icons in place.
+	ordered: [dynamic]App
+	for previous in entries^ {
+		for &entry in next {
+			if entry.order_id == previous.order_id {
+				append(&ordered, entry)
+				entry.order_id = 0
+				break
+			}
+		}
+	}
+	for entry in next {
+		if entry.order_id == 0 {
+			continue
+		}
+		insert_at := len(ordered)
+		if entry.ax_window != nil {
+			for index := len(ordered) - 1; index >= 0; index -= 1 {
+				if ordered[index].ax_window != nil && ordered[index].pid == entry.pid {
+					insert_at = index + 1
+					break
+				}
+			}
+		}
+		inject_at(&ordered, insert_at, entry)
+	}
+	delete(next)
+	free_apps(entries^)
+	entries^ = ordered
 }
 
 shelf_frames :: proc(screen: ^ns.Object, rows: int, settings: Settings) -> (resting, display: ns.Rect) {
@@ -412,10 +490,10 @@ run_shelf :: proc() {
 	}
 	workspace := send(^ns.Object, native_class("NSWorkspace"), "sharedWorkspace")
 
-	apps: [dynamic]App
-	defer {
-		free_apps(apps)
-	}
+	grouped_apps, window_entries: [dynamic]App
+	defer free_apps(grouped_apps)
+	defer free_apps(window_entries)
+	separate_windows := false
 	active_pid: i32
 	next_refresh, next_app_refresh: f64
 	settings_process: os.Process
@@ -452,15 +530,6 @@ run_shelf :: proc() {
 		last_frame = now
 		wait = 0.04
 		redraw := false
-		if now >= next_app_refresh {
-			active_pid = refresh_apps(workspace, &apps, pinned_apps[:], app_order[:])
-			_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
-			if order_err != nil {
-				fmt.eprintfln("Could not save app order: %v", order_err)
-			}
-			next_app_refresh = now + 1.0
-			redraw = true
-		}
 		if now >= next_refresh {
 			if settings_process.pid != 0 {
 				if config_path != "" {
@@ -474,8 +543,32 @@ run_shelf :: proc() {
 					settings_process = {}
 				}
 			}
+			redraw = settings_process.pid != 0
+		}
+		check_mode := now >= next_refresh || now >= next_app_refresh
+		show_windows := separate_windows
+		if check_mode {
+			show_windows = settings.separate_windows && hood_accessibility_trusted() != 0
+		}
+		if now >= next_app_refresh || separate_windows != show_windows {
+			separate_windows = show_windows
+			active_pid = refresh_apps(workspace, &grouped_apps, pinned_apps[:], app_order[:], separate_windows)
+			if separate_windows {
+				refresh_window_entries(&window_entries, grouped_apps[:], pinned_apps[:])
+			} else {
+				free_apps(window_entries)
+				window_entries = nil
+				_, order_err := sync_app_order(config_dir, order_path, &app_order, grouped_apps[:])
+				if order_err != nil {
+					fmt.eprintfln("Could not save app order: %v", order_err)
+				}
+			}
+			next_app_refresh = now + 1.0
+			redraw = true
+		}
+		apps := window_entries if separate_windows else grouped_apps
+		if now >= next_refresh {
 			sync_displays(&docks, settings, len(apps))
-			redraw = redraw || settings_process.pid != 0
 			next_refresh = now + 0.25
 		}
 
@@ -540,9 +633,11 @@ run_shelf :: proc() {
 			dock.hover_animating = result.hover_animating
 			if result.order_changed {
 				for &other in docks { other.needs_redraw = true }
-				_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
-				if order_err != nil {
-					fmt.eprintfln("Could not save app order: %v", order_err)
+				if !separate_windows {
+					_, order_err := sync_app_order(config_dir, order_path, &app_order, apps[:])
+					if order_err != nil {
+						fmt.eprintfln("Could not save app order: %v", order_err)
+					}
 				}
 			}
 			menu_choice := Menu_Choice.None
@@ -580,7 +675,10 @@ run_shelf :: proc() {
 						break
 					}
 				}
-				if clicked != nil && clicked.pid != 0 {
+				if clicked != nil && clicked.ax_window != nil {
+					hood_toggle_window(clicked.pid, clicked.ax_window)
+					next_app_refresh = 0
+				} else if clicked != nil && clicked.pid != 0 {
 					target := send(
 						^ns.Object,
 						native_class("NSRunningApplication"),

@@ -1,5 +1,6 @@
 package main
 
+import cf "core:sys/darwin/CoreFoundation"
 import ns "vendor:darwin/AppKit"
 
 foreign import hood_native "../build/native/libhood_native.a"
@@ -23,6 +24,7 @@ Native_Settings_State :: struct {
 	hover_wave, magnification_percent:              i32,
 	hover_animation_tenths:                         i32,
 	tooltip_opacity_percent:                        i32,
+	separate_windows:                               i32,
 }
 
 Native_Settings_Events :: struct {
@@ -39,6 +41,10 @@ foreign hood_native {
 	hood_begin :: proc "c" (window: ^ns.Object, rgb: u32, radius: f64, x, y, width, height: f32) ---
 	hood_icon :: proc "c" (window: ^ns.Object, image: rawptr, x, y, width, height: f32) ---
 	hood_end :: proc "c" (window: ^ns.Object) ---
+	hood_accessibility_trusted :: proc "c" () -> i32 ---
+	hood_copy_windows :: proc "c" (pid: i32) -> cf.ArrayRef ---
+	hood_window_title :: proc "c" (window: cf.TypeRef) -> ^ns.Object ---
+	hood_toggle_window :: proc "c" (pid: i32, window: cf.TypeRef) ---
 	hood_tooltip_create :: proc "c" () -> ^ns.Object ---
 	hood_tooltip_show :: proc "c" (tip, window: ^ns.Object, text: cstring, x, y: f32, edge, opacity_percent, pid: i32) ---
 	hood_tooltip_active :: proc "c" (tip: ^ns.Object) -> i32 ---

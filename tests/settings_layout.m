@@ -35,9 +35,16 @@ int main(void) {
         void *handle=hood_settings_create(&state,1,1,0,0);
         HoodSettingsController *controller=(__bridge HoodSettingsController *)handle;
         check_layout(controller);
+        NSPopUpButton *grouping=(NSPopUpButton *)controller.controls[@(HoodSeparateWindows)];
+        assert([grouping.titleOfSelectedItem isEqualToString:@"By app"]);
+        [grouping selectItemAtIndex:1];
+        [controller controlChanged:grouping];
+        assert(controller.state.separate_windows == 1 && controller.events.changed);
         assert(!NSColorPanel.sharedColorPanelExists || !NSColorPanel.sharedColorPanel.visible);
         state.auto_hide=0;
+        state.separate_windows=1;
         hood_settings_update(handle,&state);
+        assert([grouping.titleOfSelectedItem isEqualToString:@"One icon per window"]);
         check_layout(controller);
         [controller openBackgroundColor:(HoodHexColorButton *)controller.controls[@(HoodBackground)]];
         assert(NSColorPanel.sharedColorPanel.visible);

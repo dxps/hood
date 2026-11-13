@@ -66,6 +66,7 @@ Settings :: struct {
 	animation_tenths:                             i32,
 	tooltip_delay_ms:                             i32,
 	tooltip_opacity_percent:                      i32,
+	separate_windows:                             bool,
 	hover_wave:                                   bool,
 	magnification_percent:                        i32,
 	hover_animation_tenths:                       i32,
@@ -110,6 +111,10 @@ load_settings :: proc(path: string) -> Settings {
 			// Read the previous on/off setting from existing configs.
 			if value == "false" {
 				settings.magnification_percent = 0
+			}
+		case "separate_windows":
+			if value == "true" || value == "false" {
+				settings.separate_windows = value == "true"
 			}
 		case "hover_wave":
 			if value == "true" || value == "false" {
@@ -219,7 +224,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 	defer os.remove(temp_path)
 	edge := EDGE_KEYS[settings.edge]
 	text := fmt.tprintf(
-		"display = \"%s\"\nedge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\ntooltip_opacity_percent = %d\nhover_wave = %v\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\n",
+		"display = \"%s\"\nedge = \"%s\"\nicon_size = %d\ncorner_radius = %d\nbackground_color = \"#%06X\"\nicon_gap = %d\nhorizontal_margin = %d\nvertical_margin = %d\nauto_hide = %v\nanimation_tenths = %d\ntooltip_delay_ms = %d\ntooltip_opacity_percent = %d\nhover_wave = %v\nmagnification_percent = %d\nhover_animation_tenths = %d\nshow_hide_delay_ms = %d\nscreen_edge_gap = %d\nseparate_windows = %v\n",
 		string_from_display(settings.display),
 		edge,
 		settings.icon_size,
@@ -237,6 +242,7 @@ save_settings :: proc(dir, path: string, settings: Settings) -> os.Error {
 		settings.hover_animation_tenths,
 		settings.show_hide_delay_ms,
 		settings.screen_edge_gap,
+		settings.separate_windows,
 	)
 	_, err := os.write(file, transmute([]byte)text)
 	close_err := os.close(file)
@@ -268,6 +274,7 @@ native_settings_state :: proc(settings: Settings) -> Native_Settings_State {
 		settings.magnification_percent,
 		settings.hover_animation_tenths,
 		settings.tooltip_opacity_percent,
+		i32(settings.separate_windows),
 	}
 }
 
@@ -287,6 +294,7 @@ settings_from_native :: proc(state: Native_Settings_State) -> Settings {
 		animation_tenths           = state.animation_tenths,
 		tooltip_delay_ms           = state.tooltip_delay_ms,
 		tooltip_opacity_percent    = state.tooltip_opacity_percent,
+		separate_windows           = state.separate_windows != 0,
 		hover_wave                 = state.hover_wave != 0,
 		magnification_percent      = state.magnification_percent,
 		hover_animation_tenths     = state.hover_animation_tenths,

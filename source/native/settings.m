@@ -20,6 +20,7 @@ typedef struct {
     int32_t hover_wave, magnification_percent;
     int32_t hover_animation_tenths;
     int32_t tooltip_opacity_percent;
+    int32_t separate_windows;
 } HoodSettingsState;
 
 typedef struct { int32_t changed, closed, toggle_login, quit_dock; } HoodSettingsEvents;
@@ -44,6 +45,7 @@ enum {
     HoodLogin,
     HoodQuit,
     HoodDisplay,
+    HoodSeparateWindows,
 };
 
 // The selected color is data, not the button's appearance. AppKit supplies the
@@ -321,6 +323,10 @@ static NSBox *hood_separator(void) {
 
     stack = right;
     [stack addArrangedSubview:hood_header(@"Icons")];
+    NSPopUpButton *grouping = [self popupWithTag:HoodSeparateWindows
+        titles:@[@"By app", @"One icon per window"] values:@[@0, @1]];
+    grouping.toolTip = @"One icon per window requires Accessibility access.";
+    [stack addArrangedSubview:hood_row(@"Window grouping", grouping)];
     [stack addArrangedSubview:hood_row(@"Size", [self stepperWithTag:HoodIconSize minimum:24 maximum:48 increment:4])];
     [stack addArrangedSubview:hood_row(@"Magnification with wave effect", [self checkboxWithTag:HoodHoverWave])];
 
@@ -449,6 +455,7 @@ static NSBox *hood_separator(void) {
     self.state = state;
     [self refreshDisplays];
     [self selectPopup:HoodEdge value:state.edge];
+    [self selectPopup:HoodSeparateWindows value:state.separate_windows];
     [self setStepper:HoodIconSize value:state.icon_size];
     [self setStepper:HoodCornerRadius value:state.corner_radius];
     [self setStepper:HoodIconGap value:state.icon_gap];
@@ -503,6 +510,7 @@ static NSBox *hood_separator(void) {
     else if ([sender isKindOfClass:NSStepper.class]) value = sender.integerValue;
     else if ([sender isKindOfClass:NSButton.class]) value = ((NSButton *)sender).state == NSControlStateValueOn;
     switch (sender.tag) {
+        case HoodSeparateWindows: state.separate_windows = (int32_t)value; break;
         case HoodEdge: state.edge = (int32_t)value; break;
         case HoodIconSize: state.icon_size = (int32_t)value; break;
         case HoodCornerRadius: state.corner_radius = (int32_t)value; break;
