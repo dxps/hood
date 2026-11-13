@@ -308,7 +308,7 @@ refresh_window_entries :: proc(entries: ^[dynamic]App, apps: []App, pinned: []st
 				id = new_app_order_id()
 			}
 			title := string(send(cstring, hood_window_title(window), "UTF8String"))
-			entry := clone_app_entry(app, fmt.aprintf("%s — %s", app.name, title))
+			entry := clone_app_entry(app, strings.clone(title))
 			entry.order_id = id
 			entry.ax_window = cf.Retain(window)
 			append(&next, entry)
